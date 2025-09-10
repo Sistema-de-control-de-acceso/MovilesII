@@ -2,8 +2,8 @@ class ApiConfig {
   // Para desarrollo local
   static const String _baseUrlDev = 'http://192.168.1.51:3000';
 
-  // Para producción - Railway asignará automáticamente una URL
-  static const String _baseUrlProd = 'https://acees-group-backend.railway.app';
+  // Para producción - URL real de Render
+  static const String _baseUrlProd = 'https://movilesii.onrender.com';
 
   // Cambiar a true cuando compiles la APK para producción
   static const bool _isProduction = false;
