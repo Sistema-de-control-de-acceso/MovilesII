@@ -9,10 +9,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Conexión a MongoDB Atlas
+// Conexión a MongoDB Atlas - ESPECIFICAR BASE DE DATOS ASISTENCIA
+mongoose.set('strictQuery', false);
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+  dbName: 'ASISTENCIA'
 });
 
 const db = mongoose.connection;
