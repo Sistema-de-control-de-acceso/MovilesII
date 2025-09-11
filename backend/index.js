@@ -1,4 +1,130 @@
 // Backend completo con autenticación segura
+const { v4: uuidv4 } = require('uuid');
+const PuntoControl = require('./models/PuntoControl');
+const Asignacion = require('./models/Asignacion');
+// ==================== ENDPOINTS PUNTOS DE CONTROL ====================
+
+// Listar todos los puntos de control
+app.get('/puntos-control', async (req, res) => {
+  try {
+    const puntos = await PuntoControl.find();
+    res.json(puntos);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener puntos de control' });
+  }
+});
+
+// Crear un nuevo punto de control
+app.post('/puntos-control', async (req, res) => {
+  try {
+    const { nombre, ubicacion, descripcion } = req.body;
+    if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
+    const punto = new PuntoControl({
+      _id: uuidv4(),
+      nombre,
+      ubicacion,
+      descripcion
+    });
+    await punto.save();
+    res.status(201).json(punto);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al crear punto de control' });
+  }
+});
+
+// Actualizar punto de control
+app.put('/puntos-control/:id', async (req, res) => {
+  try {
+    const punto = await PuntoControl.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!punto) return res.status(404).json({ error: 'Punto de control no encontrado' });
+    res.json(punto);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al actualizar punto de control' });
+  }
+});
+
+// Eliminar punto de control
+app.delete('/puntos-control/:id', async (req, res) => {
+  try {
+    const punto = await PuntoControl.findByIdAndDelete(req.params.id);
+    if (!punto) return res.status(404).json({ error: 'Punto de control no encontrado' });
+    res.json({ message: 'Punto de control eliminado' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al eliminar punto de control' });
+  }
+});
+
+// ==================== ENDPOINTS ASIGNACIONES ====================
+
+// Listar todas las asignaciones
+app.get('/asignaciones', async (req, res) => {
+  try {
+    const asignaciones = await Asignacion.find();
+    res.json(asignaciones);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener asignaciones' });
+  }
+});
+
+// Crear asignación múltiple de guardias a puntos
+app.post('/asignaciones', async (req, res) => {
+  try {
+    const { asignaciones } = req.body; // [{ guardia_id, punto_id, fecha_inicio, fecha_fin }]
+    if (!Array.isArray(asignaciones) || asignaciones.length === 0) {
+      return res.status(400).json({ error: 'Se requiere al menos una asignación' });
+    }
+    const nuevas = [];
+    for (const asignacion of asignaciones) {
+      if (!asignacion.guardia_id || !asignacion.punto_id || !asignacion.fecha_inicio) {
+        return res.status(400).json({ error: 'Datos incompletos en asignación' });
+      }
+      // Validación de conflicto: no permitir asignación activa duplicada
+      const conflicto = await Asignacion.findOne({
+        guardia_id: asignacion.guardia_id,
+        punto_id: asignacion.punto_id,
+        estado: 'activa'
+      });
+      if (conflicto) {
+        return res.status(409).json({ error: `Conflicto: Guardia ya asignado a este punto` });
+      }
+      const nueva = new Asignacion({
+        _id: uuidv4(),
+        ...asignacion,
+        estado: 'activa'
+      });
+      await nueva.save();
+      nuevas.push(nueva);
+    }
+    res.status(201).json(nuevas);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al crear asignaciones' });
+  }
+});
+
+// Finalizar (desasignar) una asignación
+app.put('/asignaciones/:id/finalizar', async (req, res) => {
+  try {
+    const asignacion = await Asignacion.findByIdAndUpdate(
+      req.params.id,
+      { estado: 'finalizada', fecha_fin: new Date() },
+      { new: true }
+    );
+    if (!asignacion) return res.status(404).json({ error: 'Asignación no encontrada' });
+    res.json(asignacion);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al finalizar asignación' });
+  }
+});
+
+// Visualización de asignaciones por punto
+app.get('/puntos-control/:id/asignaciones', async (req, res) => {
+  try {
+    const asignaciones = await Asignacion.find({ punto_id: req.params.id, estado: 'activa' });
+    res.json(asignaciones);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener asignaciones del punto' });
+  }
+});
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');

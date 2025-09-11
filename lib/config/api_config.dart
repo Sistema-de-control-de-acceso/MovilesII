@@ -19,4 +19,5 @@ class ApiConfig {
   static String get externosUrl => '$baseUrl/externos';
   static String get alumnosUrl => '$baseUrl/alumnos';
   static String get visitasUrl => '$baseUrl/visitas';
+  static String get puntosControlUrl => '$baseUrl/puntos-control';
 }
