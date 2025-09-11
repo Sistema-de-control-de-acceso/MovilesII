@@ -131,6 +131,24 @@ const Visita = mongoose.model('visitas', VisitaSchema);
 
 // ==================== RUTAS ====================
 
+// Ruta de prueba raíz
+app.get('/', (req, res) => {
+  res.json({
+    message: "API Sistema Control Acceso NFC - FUNCIONANDO ✅",
+    endpoints: {
+      alumnos: "/alumnos",
+      facultades: "/facultades", 
+      usuarios: "/usuarios",
+      asistencias: "/asistencias",
+      externos: "/externos",
+      visitas: "/visitas",
+      login: "/login"
+    },
+    database: "ASISTENCIA - MongoDB Atlas",
+    status: "Sprint 1 Completo 🚀"
+  });
+});
+
 // Ruta para obtener asistencias
 app.get('/asistencias', async (req, res) => {
   try {
