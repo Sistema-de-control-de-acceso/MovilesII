@@ -32,7 +32,45 @@ class PuntoControl {
       };
 }
 
+class Asignacion {
+  final String id;
+  final String guardiaId;
+  final String puntoId;
+  final String estado;
+  final DateTime fechaInicio;
+  final DateTime? fechaFin;
+
+  Asignacion({
+    required this.id,
+    required this.guardiaId,
+    required this.puntoId,
+    required this.estado,
+    required this.fechaInicio,
+    this.fechaFin,
+  });
+
+  factory Asignacion.fromJson(Map<String, dynamic> json) {
+    return Asignacion(
+      id: json['_id'],
+      guardiaId: json['guardia_id'],
+      puntoId: json['punto_id'],
+      estado: json['estado'],
+      fechaInicio: DateTime.parse(json['fecha_inicio']),
+      fechaFin: json['fecha_fin'] != null ? DateTime.tryParse(json['fecha_fin']) : null,
+    );
+  }
+}
+
 class PuntoControlService {
+  static Future<List<Asignacion>> fetchAsignacionesPorPunto(String puntoId) async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/puntos-control/$puntoId/asignaciones'));
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((e) => Asignacion.fromJson(e)).toList();
+    } else {
+      throw Exception('Error al cargar asignaciones');
+    }
+  }
   static Future<List<PuntoControl>> fetchPuntos() async {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/puntos-control'));
     if (response.statusCode == 200) {

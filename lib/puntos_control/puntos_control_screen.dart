@@ -11,6 +11,50 @@ class PuntosControlScreen extends StatefulWidget {
 class _PuntosControlScreenState extends State<PuntosControlScreen> {
   late Future<List<PuntoControl>> _futurePuntos;
 
+  void _mostrarAsignaciones(String puntoId) async {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Guardias asignados'),
+          content: FutureBuilder<List<Asignacion>>(
+            future: PuntoControlService.fetchAsignacionesPorPunto(puntoId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()));
+              } else if (snapshot.hasError) {
+                return Text('Error: [${snapshot.error}');
+              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Text('No hay guardias asignados.');
+              }
+              final asignaciones = snapshot.data!;
+              return SizedBox(
+                width: 300,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: asignaciones.length,
+                  itemBuilder: (context, i) {
+                    final asignacion = asignaciones[i];
+                    return ListTile(
+                      title: Text('Guardia: [${asignacion.guardiaId}'),
+                      subtitle: Text('Inicio: [${asignacion.fechaInicio}'),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -107,6 +151,11 @@ class _PuntosControlScreenState extends State<PuntosControlScreen> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    IconButton(
+                      icon: const Icon(Icons.group),
+                      tooltip: 'Ver asignaciones',
+                      onPressed: () => _mostrarAsignaciones(punto.id),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.edit),
                       onPressed: () => _showForm(punto: punto),
