@@ -519,15 +519,30 @@ app.get('/externos', async (req, res) => {
 
 // ==================== ENDPOINTS ASISTENCIAS ====================
 
-// Ruta para crear nueva asistencia (CRÍTICO para registrar accesos)
-app.post('/asistencias', async (req, res) => {
-  try {
-    const asistencia = new Asistencia(req.body);
-    await asistencia.save();
-    res.status(201).json(asistencia);
-  } catch (err) {
-    res.status(500).json({ error: 'Error al registrar asistencia', details: err.message });
+// ==================== COLA Y PROCESAMIENTO SECUENCIAL DE ASISTENCIAS ====================
+const asistenciaQueue = [];
+let processing = false;
+
+async function processAsistenciaQueue() {
+  if (processing) return;
+  processing = true;
+  while (asistenciaQueue.length > 0) {
+    const { req, res } = asistenciaQueue.shift();
+    try {
+      const asistencia = new Asistencia(req.body);
+      await asistencia.save();
+      res.status(201).json(asistencia);
+    } catch (err) {
+      res.status(500).json({ error: 'Error al registrar asistencia', details: err.message });
+    }
   }
+  processing = false;
+}
+
+// Endpoint para crear nueva asistencia (procesamiento encolado y secuencial)
+app.post('/asistencias', (req, res) => {
+  asistenciaQueue.push({ req, res });
+  processAsistenciaQueue();
 });
 
 // ==================== ENDPOINTS VISITAS ====================
