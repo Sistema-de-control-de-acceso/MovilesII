@@ -86,6 +86,40 @@ UserSchema.methods.comparePassword = async function(candidatePassword) {
 
 const User = mongoose.model('usuarios', UserSchema);
 
+// Modelo de alumnos
+const AlumnoSchema = new mongoose.Schema({
+  _identificacion: String,
+  nombre: String,
+  apellido: String,
+  dni: String,
+  codigo_universitario: { type: String, unique: true, index: true },
+  escuela_profesional: String,
+  facultad: String,
+  siglas_escuela: String,
+  siglas_facultad: String,
+  estado: { type: Boolean, default: true }
+});
+const Alumno = mongoose.model('alumnos', AlumnoSchema);
+
+// Modelo de externos
+const ExternoSchema = new mongoose.Schema({
+  nombre: String,
+  dni: { type: String, unique: true, index: true }
+});
+const Externo = mongoose.model('externos', ExternoSchema);
+
+// Modelo de visitas
+const VisitaSchema = new mongoose.Schema({
+  puerta: String,
+  guardia_nombre: String,
+  asunto: String,
+  fecha_hora: Date,
+  nombre: String,
+  dni: String,
+  facultad: String
+});
+const Visita = mongoose.model('visitas', VisitaSchema);
+
 // ==================== RUTAS ====================
 
 // Ruta para obtener asistencias
@@ -261,6 +295,108 @@ app.get('/usuarios/:id', async (req, res) => {
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener usuario' });
+  }
+});
+
+// ==================== ENDPOINTS ALUMNOS ====================
+
+// Ruta para buscar alumno por código universitario (CRÍTICO para NFC)
+app.get('/alumnos/:codigo', async (req, res) => {
+  try {
+    const alumno = await Alumno.findOne({ 
+      codigo_universitario: req.params.codigo 
+    });
+    
+    if (!alumno) {
+      return res.status(404).json({ error: 'Alumno no encontrado' });
+    }
+
+    // Validar que el alumno esté matriculado (estado = true)
+    if (!alumno.estado) {
+      return res.status(403).json({ 
+        error: 'Alumno no matriculado o inactivo',
+        alumno: {
+          nombre: alumno.nombre,
+          apellido: alumno.apellido,
+          codigo_universitario: alumno.codigo_universitario
+        }
+      });
+    }
+
+    res.json(alumno);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al buscar alumno' });
+  }
+});
+
+// Ruta para obtener todos los alumnos
+app.get('/alumnos', async (req, res) => {
+  try {
+    const alumnos = await Alumno.find();
+    res.json(alumnos);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener alumnos' });
+  }
+});
+
+// ==================== ENDPOINTS EXTERNOS ====================
+
+// Ruta para buscar externo por DNI
+app.get('/externos/:dni', async (req, res) => {
+  try {
+    const externo = await Externo.findOne({ dni: req.params.dni });
+    if (!externo) {
+      return res.status(404).json({ error: 'Externo no encontrado' });
+    }
+    res.json(externo);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al buscar externo' });
+  }
+});
+
+// Ruta para obtener todos los externos
+app.get('/externos', async (req, res) => {
+  try {
+    const externos = await Externo.find();
+    res.json(externos);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener externos' });
+  }
+});
+
+// ==================== ENDPOINTS ASISTENCIAS ====================
+
+// Ruta para crear nueva asistencia (CRÍTICO para registrar accesos)
+app.post('/asistencias', async (req, res) => {
+  try {
+    const asistencia = new Asistencia(req.body);
+    await asistencia.save();
+    res.status(201).json(asistencia);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al registrar asistencia', details: err.message });
+  }
+});
+
+// ==================== ENDPOINTS VISITAS ====================
+
+// Ruta para crear nueva visita
+app.post('/visitas', async (req, res) => {
+  try {
+    const visita = new Visita(req.body);
+    await visita.save();
+    res.status(201).json(visita);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al registrar visita', details: err.message });
+  }
+});
+
+// Ruta para obtener todas las visitas
+app.get('/visitas', async (req, res) => {
+  try {
+    const visitas = await Visita.find();
+    res.json(visitas);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener visitas' });
   }
 });
 
