@@ -21,23 +21,26 @@ db.once('open', () => {
   console.log('Conectado exitosamente a MongoDB> Atlas');
 });
 
-// Modelo de facultad
+// Modelo de facultad - EXACTO como en MongoDB Atlas
 const FacultadSchema = new mongoose.Schema({
+  _id: mongoose.Schema.Types.ObjectId,
   nombre: String,
   siglas: String
-});
+}, { collection: 'facultades', strict: false });
 const Facultad = mongoose.model('facultades', FacultadSchema);
 
-// Modelo de escuela
+// Modelo de escuela - EXACTO como en MongoDB Atlas  
 const EscuelaSchema = new mongoose.Schema({
+  _id: mongoose.Schema.Types.ObjectId,
   nombre: String,
   siglas: String,
   siglas_facultad: String
-});
+}, { collection: 'escuelas', strict: false });
 const Escuela = mongoose.model('escuelas', EscuelaSchema);
 
-// Modelo de asistencias
+// Modelo de asistencias - EXACTO como en MongoDB Atlas
 const AsistenciaSchema = new mongoose.Schema({
+  _id: mongoose.Schema.Types.ObjectId,
   nombre: String,
   apellido: String,
   dni: String,
@@ -48,11 +51,12 @@ const AsistenciaSchema = new mongoose.Schema({
   fecha_hora: Date,
   entrada_tipo: String,
   puerta: String
-});
+}, { collection: 'asistencias', strict: false });
 const Asistencia = mongoose.model('asistencias', AsistenciaSchema);
 
-// Modelo de usuarios mejorado con validaciones
+// Modelo de usuarios mejorado con validaciones - EXACTO como MongoDB Atlas
 const UserSchema = new mongoose.Schema({
+  _id: mongoose.Schema.Types.ObjectId,
   nombre: String,
   apellido: String,
   dni: { type: String, unique: true },
@@ -64,7 +68,7 @@ const UserSchema = new mongoose.Schema({
   telefono: String,
   fecha_creacion: { type: Date, default: Date.now },
   fecha_actualizacion: { type: Date, default: Date.now }
-});
+}, { collection: 'usuarios', strict: false });
 
 // Middleware para hashear contraseña antes de guardar
 UserSchema.pre('save', async function(next) {
@@ -86,8 +90,9 @@ UserSchema.methods.comparePassword = async function(candidatePassword) {
 
 const User = mongoose.model('usuarios', UserSchema);
 
-// Modelo de alumnos
+// Modelo de alumnos - EXACTO como en MongoDB Atlas
 const AlumnoSchema = new mongoose.Schema({
+  _id: mongoose.Schema.Types.ObjectId,
   _identificacion: String,
   nombre: String,
   apellido: String,
@@ -98,18 +103,20 @@ const AlumnoSchema = new mongoose.Schema({
   siglas_escuela: String,
   siglas_facultad: String,
   estado: { type: Boolean, default: true }
-});
+}, { collection: 'alumnos', strict: false });
 const Alumno = mongoose.model('alumnos', AlumnoSchema);
 
-// Modelo de externos
+// Modelo de externos - EXACTO como en MongoDB Atlas
 const ExternoSchema = new mongoose.Schema({
+  _id: mongoose.Schema.Types.ObjectId,
   nombre: String,
   dni: { type: String, unique: true, index: true }
-});
+}, { collection: 'externos', strict: false });
 const Externo = mongoose.model('externos', ExternoSchema);
 
-// Modelo de visitas
+// Modelo de visitas - EXACTO como en MongoDB Atlas
 const VisitaSchema = new mongoose.Schema({
+  _id: mongoose.Schema.Types.ObjectId,
   puerta: String,
   guardia_nombre: String,
   asunto: String,
@@ -117,7 +124,7 @@ const VisitaSchema = new mongoose.Schema({
   nombre: String,
   dni: String,
   facultad: String
-});
+}, { collection: 'visitas', strict: false });
 const Visita = mongoose.model('visitas', VisitaSchema);
 
 // ==================== RUTAS ====================
