@@ -1,0 +1,36 @@
+name: moviles2
+description: "Sistema de Control de Acceso NFC con roles"
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Gestión de estado
+  provider: ^6.1.1
+  
+  # HTTP y comunicación
+  http: ^1.2.0
+  
+  # UI y widgets
+  cupertino_icons: ^1.0.2
+  google_fonts: ^6.1.0
+  
+  # Utilidades
+  intl: ^0.18.1
+  fluttertoast: ^8.2.2
+  
+  # NFC (para futuras implementaciones)
+  flutter_nfc_kit: ^3.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
