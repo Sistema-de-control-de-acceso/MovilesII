@@ -39,14 +39,12 @@ class UsuarioModel {
       estado: json['estado'] ?? 'activo',
       puertaACargo: json['puerta_acargo'],
       telefono: json['telefono'],
-      fechaCreacion:
-          json['fecha_creacion'] != null
-              ? DateTime.parse(json['fecha_creacion'])
-              : null,
-      fechaActualizacion:
-          json['fecha_actualizacion'] != null
-              ? DateTime.parse(json['fecha_actualizacion'])
-              : null,
+      fechaCreacion: json['fecha_creacion'] != null
+          ? DateTime.parse(json['fecha_creacion'])
+          : null,
+      fechaActualizacion: json['fecha_actualizacion'] != null
+          ? DateTime.parse(json['fecha_actualizacion'])
+          : null,
     );
   }
 
