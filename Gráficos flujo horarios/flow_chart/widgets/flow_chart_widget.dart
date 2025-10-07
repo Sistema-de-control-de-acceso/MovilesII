@@ -35,7 +35,6 @@ class FlowChartWidget extends StatelessWidget {
           maxY: max.toDouble() + 2,
           barTouchData: BarTouchData(
             touchTooltipData: BarTouchTooltipData(
-              tooltipBgColor: Colors.black87,
               getTooltipItem: (group, groupIndex, rod, rodIndex) {
                 final item = data[groupIndex];
                 return BarTooltipItem(
@@ -51,7 +50,6 @@ class FlowChartWidget extends StatelessWidget {
               },
               fitInsideVertically: true,
               fitInsideHorizontally: true,
-              tooltipRoundedRadius: 10,
               tooltipPadding: const EdgeInsets.all(12),
               tooltipMargin: 8,
             ),
@@ -72,8 +70,8 @@ class FlowChartWidget extends StatelessWidget {
                   final idx = value.toInt();
                   if (idx < 0 || idx >= data.length) return const SizedBox.shrink();
                   return SideTitleWidget(
-                    axisSide: meta.axisSide,
                     child: Text(data[idx].label, style: TextStyle(fontSize: 10, color: textColor)),
+                    meta: meta,
                   );
                 },
               ),
@@ -126,8 +124,8 @@ class FlowChartWidget extends StatelessWidget {
                   final idx = value.toInt();
                   if (idx < 0 || idx >= data.length) return const SizedBox.shrink();
                   return SideTitleWidget(
-                    axisSide: meta.axisSide,
                     child: Text(data[idx].label, style: TextStyle(fontSize: 10, color: textColor)),
+                    meta: meta,
                   );
                 },
               ),

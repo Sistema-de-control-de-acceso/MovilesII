@@ -4,6 +4,8 @@ import 'widgets/flow_chart_widget.dart';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:csv/csv.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
 import 'package:flutter/rendering.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -91,18 +93,18 @@ class _FlowChartViewState extends State<FlowChartView> {
     }
   }
 
-  Future<void> _exportImage() async {
+  Future<void> _exportPDF() async {
     if (kIsWeb) {
       try {
-        await exportImageWeb(chartKey);
+        await exportPdfWeb(chartKey);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Imagen descargada.')),
+            const SnackBar(content: Text('PDF descargado.')),
           );
         }
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al exportar imagen: $e')),
+          SnackBar(content: Text('Error al exportar PDF: $e')),
         );
       }
       return;
@@ -112,17 +114,30 @@ class _FlowChartViewState extends State<FlowChartView> {
       var image = await boundary.toImage(pixelRatio: 3.0);
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       Uint8List pngBytes = byteData!.buffer.asUint8List();
+      // Crear PDF
+      final pdf = pw.Document();
+      final imageProvider = pw.MemoryImage(pngBytes);
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return pw.Center(
+              child: pw.Image(imageProvider),
+            );
+          },
+        ),
+      );
       final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/accesos_grafico.png');
-      await file.writeAsBytes(pngBytes);
+      final file = File('${dir.path}/accesos_grafico.pdf');
+      await file.writeAsBytes(await pdf.save());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imagen exportada en: ${file.path}')),
+          SnackBar(content: Text('PDF exportado en: ${file.path}')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al exportar imagen: $e')),
+        SnackBar(content: Text('Error al exportar PDF: $e')),
       );
     }
   }
@@ -200,11 +215,11 @@ class _FlowChartViewState extends State<FlowChartView> {
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'csv') _exportCSV();
-              if (value == 'img') _exportImage();
+              if (value == 'pdf') _exportPDF();
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'csv', child: Text('Exportar CSV')),
-              const PopupMenuItem(value: 'img', child: Text('Exportar imagen')),
+              const PopupMenuItem(value: 'pdf', child: Text('Exportar PDF')),
             ],
             icon: const Icon(Icons.download),
             tooltip: 'Exportar',
