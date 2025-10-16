@@ -1,6 +1,6 @@
+
 import 'package:flutter/material.dart';
 import 'widgets/flow_chart_widget.dart';
-// import 'dart:html' as html; // Solo se usa en web_export.dart
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:csv/csv.dart';
@@ -10,8 +10,121 @@ import 'package:flutter/rendering.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'web_export.dart';
-// import 'flow_chart/dummy.dart';
 import 'dart:io'; // Solo se usa en plataformas compatibles (no web)
+
+/// Modelo de evento para el calendario de accesos.
+class CalendarEvent {
+  final DateTime date;
+  final String title;
+  CalendarEvent(this.date, this.title);
+}
+
+/// Vista principal para mostrar el gráfico de flujo de accesos.
+/// Recibe los datos por parámetros y muestra el gráfico interactivo.
+class FlowChartView extends StatefulWidget {
+  /// Lista de datos de accesos por hora/día.
+  final List<FlowChartData> data;
+
+  const FlowChartView({
+    Key? key,
+    required this.data,
+  }) : super(key: key);
+
+  @override
+  State<FlowChartView> createState() => _FlowChartViewState();
+}
+
+class _FlowChartViewState extends State<FlowChartView> {
+  // Eventos de ejemplo para el calendario
+  final List<CalendarEvent> eventos = [
+    CalendarEvent(DateTime(2025, 10, 7, 9), 'Reunión de equipo'),
+    CalendarEvent(DateTime(2025, 10, 7, 12), 'Mantenimiento'),
+    CalendarEvent(DateTime(2025, 10, 7, 14), 'Visita auditoría'),
+    CalendarEvent(DateTime(2025, 10, 8, 10), 'Capacitación'),
+  ];
+
+  /// Tipo de gráfico seleccionado
+  String chartType = 'barras'; // 'barras', 'lineas', 'area'
+
+  /// Filtrado de datos según lógica de negocio (puedes personalizar)
+  List<FlowChartData> get filteredData => widget.data;
+
+  /// Total de accesos en el periodo mostrado
+  int get totalAccesos => filteredData.fold(0, (a, b) => a + b.value);
+
+  /// Promedio de accesos
+  double get promedioAccesos => filteredData.isEmpty ? 0 : totalAccesos / filteredData.length;
+
+  /// Hora con mayor cantidad de accesos
+  FlowChartData? get horaPico => filteredData.isEmpty ? null : filteredData.reduce((a, b) => a.value > b.value ? a : b);
+
+  /// Usuario con más accesos
+  String get topUsuario {
+    if (filteredData.isEmpty) return '';
+    final Map<String, int> conteo = {};
+    for (var d in filteredData) {
+      conteo[d.userType ?? 'Desconocido'] = (conteo[d.userType ?? 'Desconocido'] ?? 0) + d.value;
+    }
+    return conteo.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+  }
+
+  /// Ubicación más frecuente
+  String get topUbicacion {
+    if (filteredData.isEmpty) return '';
+    final Map<String, int> conteo = {};
+    for (var d in filteredData) {
+      conteo[d.location ?? 'Desconocida'] = (conteo[d.location ?? 'Desconocida'] ?? 0) + d.value;
+    }
+    return conteo.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+  }
+
+  /// Detecta si hay un pico inusual de accesos
+  bool get hayPicoInusual {
+    if (filteredData.isEmpty) return false;
+    final max = filteredData.map((e) => e.value).fold(0, (a, b) => a > b ? a : b);
+    final avg = promedioAccesos;
+    return max > avg * 2 && max > 10; // Ejemplo: pico si es más del doble del promedio y mayor a 10
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Total accesos: $totalAccesos'),
+              Text('Promedio: ${promedioAccesos.toStringAsFixed(2)}'),
+              if (horaPico != null) Text('Hora pico: ${horaPico!.label}'),
+              if (hayPicoInusual)
+                const Icon(Icons.warning, color: Colors.red, size: 28, semanticLabel: 'Pico inusual'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: FlowChartWidget(
+            data: filteredData,
+            chartType: chartType,
+            onBarTap: (item) {
+              // Ejemplo de interacción: mostrar detalles
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text('Detalle de acceso'),
+                  content: Text('Hora: ${item.label}\nAccesos: ${item.value}\nUsuario: ${item.userType ?? '-'}\nUbicación: ${item.location ?? '-'}'),
+                  actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
+                ),
+              );
+            },
+          ),
+        ),
+        // Puedes agregar aquí más widgets, como exportar, filtrar, etc.
+      ],
+    );
+  }
+}
 
 // Ejemplo de eventos para el calendario
 class CalendarEvent {
