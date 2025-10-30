@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Accesos - Monitoreo en Tiempo Real</title>
+    <link rel="stylesheet" href="/dashboard/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1>📊 Dashboard de Accesos</h1>
+                <div class="header-info">
+                    <span class="status-indicator" id="connectionStatus">
+                        <span class="status-dot"></span>
+                        Conectando...
+                    </span>
+                    <span class="last-update" id="lastUpdate">--:--:--</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Métricas principales -->
+        <section class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-icon">👥</div>
+                <div class="metric-content">
+                    <h3>Accesos Hoy</h3>
+                    <p class="metric-value" id="todayAccess">0</p>
+                    <span class="metric-change positive" id="todayChange">+0%</span>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-icon">🚪</div>
+                <div class="metric-content">
+                    <h3>En Instalación</h3>
+                    <p class="metric-value" id="currentInside">0</p>
+                    <span class="metric-change" id="insideChange">0</span>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-icon">📈</div>
+                <div class="metric-content">
+                    <h3>Entradas Última Hora</h3>
+                    <p class="metric-value" id="lastHourEntrances">0</p>
+                    <span class="metric-change positive" id="hourChange">+0%</span>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-icon">📉</div>
+                <div class="metric-content">
+                    <h3>Salidas Última Hora</h3>
+                    <p class="metric-value" id="lastHourExits">0</p>
+                    <span class="metric-change negative" id="exitChange">-0%</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gráficos principales -->
+        <section class="charts-section">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h2>Accesos por Hora (Últimas 24 horas)</h2>
+                    <div class="chart-controls">
+                        <button class="btn-filter active" data-period="24h">24h</button>
+                        <button class="btn-filter" data-period="7d">7 días</button>
+                        <button class="btn-filter" data-period="30d">30 días</button>
+                    </div>
+                </div>
+                <canvas id="hourlyChart"></canvas>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h2>Distribución Entradas/Salidas</h2>
+                </div>
+                <canvas id="entranceExitChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Gráficos secundarios -->
+        <section class="secondary-charts">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h2>Accesos por Día de la Semana</h2>
+                </div>
+                <canvas id="weeklyChart"></canvas>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h2>Top 5 Facultades</h2>
+                </div>
+                <canvas id="facultiesChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Tabla de accesos recientes -->
+        <section class="recent-access-section">
+            <div class="section-header">
+                <h2>Accesos Recientes</h2>
+                <button class="btn-refresh" id="refreshRecent">🔄 Actualizar</button>
+            </div>
+            <div class="table-container">
+                <table class="access-table">
+                    <thead>
+                        <tr>
+                            <th>Hora</th>
+                            <th>Nombre</th>
+                            <th>Tipo</th>
+                            <th>Facultad</th>
+                            <th>Puerta</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recentAccessTable">
+                        <tr>
+                            <td colspan="6" class="loading">Cargando datos...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script src="/dashboard/app.js"></script>
+</body>
+</html>
+

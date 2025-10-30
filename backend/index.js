@@ -132,8 +132,17 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 
 const app = express();
+const http = require('http').createServer(app);
+const io = require('socket.io')(http, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
 // Conexión a MongoDB Atlas - ESPECIFICAR BASE DE DATOS ASISTENCIA
 mongoose.set('strictQuery', false);
@@ -3020,10 +3029,280 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DASHBOARD TIEMPO REAL ====================
+
+// Servicio de métricas en tiempo real
+class RealtimeMetricsService {
+  constructor(AsistenciaModel) {
+    this.Asistencia = AsistenciaModel;
+  }
+
+  async getTodayMetrics() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayAccess = await this.Asistencia.countDocuments({
+      fecha_hora: { $gte: today, $lt: tomorrow }
+    });
+
+    const entrances = await this.Asistencia.countDocuments({
+      fecha_hora: { $gte: today, $lt: tomorrow },
+      tipo: 'entrada'
+    });
+
+    const exits = await this.Asistencia.countDocuments({
+      fecha_hora: { $gte: today, $lt: tomorrow },
+      tipo: 'salida'
+    });
+
+    const currentInside = entrances - exits;
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const lastHourEntrances = await this.Asistencia.countDocuments({
+      fecha_hora: { $gte: oneHourAgo },
+      tipo: 'entrada'
+    });
+
+    const lastHourExits = await this.Asistencia.countDocuments({
+      fecha_hora: { $gte: oneHourAgo },
+      tipo: 'salida'
+    });
+
+    return {
+      todayAccess,
+      currentInside: Math.max(0, currentInside),
+      lastHourEntrances,
+      lastHourExits
+    };
+  }
+
+  async getHourlyData(hours = 24) {
+    const now = new Date();
+    const startDate = new Date(now.getTime() - hours * 60 * 60 * 1000);
+
+    const asistencias = await this.Asistencia.find({
+      fecha_hora: { $gte: startDate }
+    }).sort({ fecha_hora: 1 }).lean();
+
+    const hourlyData = {};
+    
+    asistencias.forEach(access => {
+      const fecha = new Date(access.fecha_hora);
+      const hour = fecha.getHours();
+      const hourKey = `${fecha.toISOString().split('T')[0]}_${hour}`;
+
+      if (!hourlyData[hourKey]) {
+        hourlyData[hourKey] = { entrances: 0, exits: 0 };
+      }
+
+      if (access.tipo === 'entrada') {
+        hourlyData[hourKey].entrances++;
+      } else {
+        hourlyData[hourKey].exits++;
+      }
+    });
+
+    const labels = [];
+    const entrances = [];
+    const exits = [];
+
+    for (let i = hours - 1; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 60 * 60 * 1000);
+      const hour = date.getHours();
+      const dateKey = date.toISOString().split('T')[0];
+      const hourKey = `${dateKey}_${hour}`;
+
+      labels.push(`${hour}:00`);
+      entrances.push(hourlyData[hourKey]?.entrances || 0);
+      exits.push(hourlyData[hourKey]?.exits || 0);
+    }
+
+    return { labels, entrances, exits };
+  }
+
+  async getWeeklyData() {
+    const now = new Date();
+    const startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const asistencias = await this.Asistencia.find({
+      fecha_hora: { $gte: startDate }
+    }).lean();
+
+    const weeklyData = [0, 0, 0, 0, 0, 0, 0];
+
+    asistencias.forEach(access => {
+      const fecha = new Date(access.fecha_hora);
+      const dayOfWeek = fecha.getDay();
+      weeklyData[dayOfWeek]++;
+    });
+
+    return weeklyData;
+  }
+
+  async getFacultiesData() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const asistencias = await this.Asistencia.find({
+      fecha_hora: { $gte: today, $lt: tomorrow }
+    }).lean();
+
+    const facultiesCount = {};
+
+    asistencias.forEach(access => {
+      const faculty = access.siglas_facultad || 'N/A';
+      facultiesCount[faculty] = (facultiesCount[faculty] || 0) + 1;
+    });
+
+    const sorted = Object.entries(facultiesCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return {
+      labels: sorted.map(([name]) => name),
+      values: sorted.map(([, count]) => count)
+    };
+  }
+
+  async getRecentAccess(limit = 20) {
+    const recent = await this.Asistencia.find()
+      .sort({ fecha_hora: -1 })
+      .limit(limit)
+      .lean();
+
+    return recent;
+  }
+
+  async getEntranceExitData() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const entrances = await this.Asistencia.countDocuments({
+      fecha_hora: { $gte: today, $lt: tomorrow },
+      tipo: 'entrada'
+    });
+
+    const exits = await this.Asistencia.countDocuments({
+      fecha_hora: { $gte: today, $lt: tomorrow },
+      tipo: 'salida'
+    });
+
+    return { entrances, exits };
+  }
+}
+
+const metricsService = new RealtimeMetricsService(Asistencia);
+
+// Endpoint para métricas del dashboard
+app.get('/dashboard/metrics', async (req, res) => {
+  try {
+    const { period = '24h' } = req.query;
+    const hours = period === '7d' ? 168 : period === '30d' ? 720 : 24;
+
+    const metrics = await metricsService.getTodayMetrics();
+    const hourlyData = await metricsService.getHourlyData(hours);
+    const entranceExitData = await metricsService.getEntranceExitData();
+    const weeklyData = await metricsService.getWeeklyData();
+    const facultiesData = await metricsService.getFacultiesData();
+
+    res.json({
+      success: true,
+      metrics,
+      hourlyData,
+      entranceExitData,
+      weeklyData: { values: weeklyData },
+      facultiesData,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoint para accesos recientes
+app.get('/dashboard/recent-access', async (req, res) => {
+  try {
+    const access = await metricsService.getRecentAccess(20);
+
+    res.json({
+      success: true,
+      access,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo accesos recientes', 
+      details: err.message 
+    });
+  }
+});
+
+// WebSocket connection handling
+io.on('connection', (socket) => {
+  console.log('✅ Cliente conectado:', socket.id);
+
+  // Enviar métricas iniciales al conectar
+  metricsService.getTodayMetrics().then(metrics => {
+    socket.emit('real-time-metrics', metrics);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('❌ Cliente desconectado:', socket.id);
+  });
+});
+
+// Enviar métricas periódicas a todos los clientes conectados
+setInterval(async () => {
+  try {
+    const metrics = await metricsService.getTodayMetrics();
+    io.emit('real-time-metrics', metrics);
+  } catch (error) {
+    console.error('Error enviando métricas:', error);
+  }
+}, 5000); // Cada 5 segundos
+
+// Watch for new access records and emit to clients
+const watchAccessChanges = async () => {
+  try {
+    const changeStream = Asistencia.watch([], { fullDocument: 'updateLookup' });
+    
+    changeStream.on('change', async (change) => {
+      if (change.operationType === 'insert') {
+        const newAccess = change.fullDocument;
+        io.emit('new-access', newAccess);
+
+        // También actualizar métricas
+        const metrics = await metricsService.getTodayMetrics();
+        io.emit('real-time-metrics', metrics);
+
+        // Actualizar datos horarios
+        const hourlyData = await metricsService.getHourlyData(24);
+        io.emit('hourly-data', hourlyData);
+      }
+    });
+  } catch (error) {
+    console.error('Error en watch de cambios:', error);
+  }
+};
+
+// Iniciar watch de cambios
+watchAccessChanges();
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+http.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
   console.log(`✅ Backend completo con ${Object.keys(require('./package.json').dependencies).length} dependencias`);
   console.log(`✅ MongoDB conectado a base de datos: ASISTENCIA`);
   console.log(`✅ Endpoints disponibles: 30+ rutas REST (incluye ML)`);
+  console.log(`✅ Dashboard disponible en http://localhost:${PORT}/dashboard`);
+  console.log(`✅ WebSocket activo para actualizaciones en tiempo real`);
 });
