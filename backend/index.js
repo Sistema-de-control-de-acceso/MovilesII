@@ -1373,6 +1373,180 @@ function predictWithModel(model, features, featureNames) {
   return { prediction: 0, probability: 0.5, confidence: 0 };
 }
 
+// ==================== ENDPOINTS DE REPORTES DE HORARIOS PICO ML ====================
+
+// Importar servicio de reportes de horarios pico
+const PeakHoursReportService = require('./ml/peak_hours_report_service');
+
+// Instancia del servicio
+const peakHoursReportService = new PeakHoursReportService(Asistencia);
+
+// Generar reporte completo de horarios pico con ML
+app.get('/ml/reports/peak-hours', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 }; // Última semana por defecto
+    }
+
+    const report = await peakHoursReportService.generatePeakHoursReport(dateRange, {
+      includeComparison: true,
+      includeSuggestions: true,
+      includeHourlyMetrics: true
+    });
+
+    res.json({
+      success: true,
+      report,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando reporte de horarios pico', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener comparación ML vs Real
+app.get('/ml/reports/comparison', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    // Generar predicciones
+    const PeakHoursPredictor = require('./ml/peak_hours_predictor');
+    const predictor = new PeakHoursPredictor();
+    await predictor.loadLatestModel();
+    const predictions = await predictor.predictPeakHours(dateRange);
+
+    // Comparar con datos reales
+    const MLRealComparison = require('./ml/ml_real_comparison');
+    const comparison = new MLRealComparison(Asistencia);
+    const result = await comparison.compareMLvsReal(predictions.predictions, predictions.dateRange);
+
+    res.json({
+      success: true,
+      comparison: result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error comparando ML vs Real', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas de precisión por horario
+app.get('/ml/reports/hourly-metrics', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const report = await peakHoursReportService.generatePeakHoursReport(dateRange, {
+      includeComparison: true,
+      includeSuggestions: false,
+      includeHourlyMetrics: true
+    });
+
+    res.json({
+      success: true,
+      hourlyMetrics: report.hourlyMetrics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas por horario', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener sugerencias de ajuste
+app.get('/ml/reports/suggestions', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const report = await peakHoursReportService.generatePeakHoursReport(dateRange, {
+      includeComparison: true,
+      includeSuggestions: true,
+      includeHourlyMetrics: false
+    });
+
+    res.json({
+      success: true,
+      suggestions: report.suggestions,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo sugerencias', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener resumen para dashboard
+app.get('/ml/reports/dashboard-summary', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const summary = await peakHoursReportService.getDashboardSummary(dateRange);
+
+    res.json({
+      success: true,
+      summary,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo resumen del dashboard', 
+      details: err.message 
+    });
+  }
+});
+
 // Endpoint de salud del sistema
 app.get('/health', async (req, res) => {
   try {
