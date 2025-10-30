@@ -2125,6 +2125,250 @@ app.post('/ml/auto-update/manual', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE REGRESIÓN LINEAL ====================
+
+// Importar servicios de regresión lineal
+const LinearRegressionService = require('./ml/linear_regression_service');
+const CrossValidation = require('./ml/cross_validation');
+const ParameterOptimizer = require('./ml/parameter_optimizer');
+
+// Instancia del servicio
+const linearRegressionService = new LinearRegressionService(Asistencia);
+
+// Entrenar modelo de regresión lineal
+app.post('/ml/regression/train', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      featureColumns = null,
+      targetColumn = 'target',
+      testSize = 0.2,
+      optimizeParams = true,
+      cvFolds = 5,
+      targetR2 = 0.7
+    } = req.body;
+
+    res.json({
+      success: true,
+      message: 'Entrenamiento de regresión lineal iniciado. Verifique el endpoint /ml/regression/status para el progreso.',
+      timestamp: new Date()
+    });
+
+    // Ejecutar en segundo plano
+    linearRegressionService.trainRegressionModel({
+      months,
+      featureColumns,
+      targetColumn,
+      testSize,
+      optimizeParams,
+      cvFolds,
+      targetR2
+    }).then(result => {
+      console.log('✅ Regresión lineal entrenada:', result);
+    }).catch(error => {
+      console.error('❌ Error en entrenamiento:', error);
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando entrenamiento de regresión lineal', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas del modelo de regresión
+app.get('/ml/regression/metrics', async (req, res) => {
+  try {
+    const metrics = await linearRegressionService.getModelMetrics();
+
+    res.json({
+      success: true,
+      metrics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas de regresión', 
+      details: err.message 
+    });
+  }
+});
+
+// Realizar predicción con modelo de regresión
+app.post('/ml/regression/predict', async (req, res) => {
+  try {
+    const { features } = req.body;
+
+    if (!features || !Array.isArray(features)) {
+      return res.status(400).json({ 
+        error: 'features debe ser un array' 
+      });
+    }
+
+    const prediction = await linearRegressionService.predict(features);
+
+    res.json({
+      success: true,
+      prediction: Array.isArray(prediction) ? prediction : [prediction],
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error en predicción de regresión', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar validación cruzada
+app.post('/ml/regression/cross-validate', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      featureColumns = null,
+      targetColumn = 'target',
+      k = 5,
+      modelOptions = {}
+    } = req.body;
+
+    // Recopilar dataset
+    const collectionResult = await linearRegressionService.collector.collectHistoricalDataset({
+      months,
+      includeFeatures: true,
+      outputFormat: 'json'
+    });
+
+    const datasetContent = await fs.readFile(collectionResult.filepath, 'utf8');
+    const dataset = JSON.parse(datasetContent);
+
+    // Preparar datos
+    const features = featureColumns || linearRegressionService.detectFeatureColumns(dataset);
+    const { X, y } = linearRegressionService.prepareRegressionData(dataset, features, targetColumn);
+
+    // Ejecutar validación cruzada
+    const cvValidator = new CrossValidation({ k });
+    const cvResults = cvValidator.crossValidateMultipleMetrics(X, y, modelOptions);
+
+    res.json({
+      success: true,
+      crossValidation: cvResults,
+      meetsR2Threshold: cvResults.summary.r2 >= 0.7,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error en validación cruzada', 
+      details: err.message 
+    });
+  }
+});
+
+// Optimizar parámetros del modelo
+app.post('/ml/regression/optimize', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      featureColumns = null,
+      targetColumn = 'target',
+      cvFolds = 5,
+      targetR2 = 0.7,
+      method = 'grid' // 'grid' o 'random'
+    } = req.body;
+
+    // Recopilar dataset
+    const collectionResult = await linearRegressionService.collector.collectHistoricalDataset({
+      months,
+      includeFeatures: true,
+      outputFormat: 'json'
+    });
+
+    const datasetContent = await fs.readFile(collectionResult.filepath, 'utf8');
+    const dataset = JSON.parse(datasetContent);
+
+    // Preparar datos
+    const features = featureColumns || linearRegressionService.detectFeatureColumns(dataset);
+    const { X, y } = linearRegressionService.prepareRegressionData(dataset, features, targetColumn);
+
+    // Optimizar parámetros
+    const optimizer = new ParameterOptimizer();
+    
+    let optimizationResult;
+    if (method === 'random') {
+      optimizationResult = optimizer.randomSearch(X, y, {}, 20, cvFolds);
+    } else {
+      optimizationResult = optimizer.optimizeForR2(X, y, targetR2, cvFolds);
+    }
+
+    res.json({
+      success: true,
+      optimization: optimizationResult,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error optimizando parámetros', 
+      details: err.message 
+    });
+  }
+});
+
+// Evaluar modelo con conjunto de prueba
+app.post('/ml/regression/evaluate', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      featureColumns = null,
+      targetColumn = 'target',
+      testSize = 0.2
+    } = req.body;
+
+    // Recopilar dataset
+    const collectionResult = await linearRegressionService.collector.collectHistoricalDataset({
+      months,
+      includeFeatures: true,
+      outputFormat: 'json'
+    });
+
+    const datasetContent = await fs.readFile(collectionResult.filepath, 'utf8');
+    const dataset = JSON.parse(datasetContent);
+
+    // Preparar datos
+    const features = featureColumns || linearRegressionService.detectFeatureColumns(dataset);
+    const { X, y } = linearRegressionService.prepareRegressionData(dataset, features, targetColumn);
+
+    // Split train/test
+    const splitIndex = Math.floor(X.length * (1 - testSize));
+    const X_test = X.slice(splitIndex);
+    const y_test = y.slice(splitIndex);
+
+    // Evaluar
+    const evaluation = await linearRegressionService.evaluateModel(
+      X_test.map((x, i) => {
+        const row = {};
+        features.forEach((feat, j) => {
+          row[feat] = x[j];
+        });
+        row[targetColumn] = y_test[i];
+        return row;
+      })
+    );
+
+    res.json({
+      success: true,
+      evaluation,
+      testSize: X_test.length,
+      meetsR2Threshold: evaluation.r2 >= 0.7,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error evaluando modelo', 
+      details: err.message 
+    });
+  }
+});
+
 // Endpoint de salud del sistema
 app.get('/health', async (req, res) => {
   try {
