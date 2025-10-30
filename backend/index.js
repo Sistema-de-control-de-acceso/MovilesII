@@ -91,6 +91,40 @@ function authenticateToken(req, res, next) {
 }
 
 // ==================== RUTAS ====================
+/**
+ * @openapi
+ * /:
+ *   get:
+ *     tags: [General]
+ *     summary: Información general de la API
+ *     description: Endpoint raíz que muestra información sobre los endpoints disponibles
+ *     responses:
+ *       200:
+ *         description: Información de la API
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "API Sistema Control Acceso NFC - FUNCIONANDO"
+ *                 endpoints:
+ *                   type: object
+ *                   properties:
+ *                     login:
+ *                       type: string
+ *                       example: "/login"
+ *                     usuarios:
+ *                       type: string
+ *                       example: "/usuarios"
+ *                     docs:
+ *                       type: string
+ *                       example: "/api-docs"
+ *                 status:
+ *                   type: string
+ *                   example: "OK"
+ */
 app.get('/', (req, res) => {
   res.json({
     message: 'API Sistema Control Acceso NFC - FUNCIONANDO',
@@ -107,6 +141,7 @@ app.get('/', (req, res) => {
  * @openapi
  * /login:
  *   post:
+ *     tags: [Autenticación]
  *     summary: Iniciar sesión y obtener JWT
  *     requestBody:
  *       required: true
@@ -118,13 +153,48 @@ app.get('/', (req, res) => {
  *             properties:
  *               email:
  *                 type: string
+ *                 format: email
+ *                 example: admin@example.com
  *               password:
  *                 type: string
+ *                 format: password
+ *                 example: "password123"
  *     responses:
  *       200:
  *         description: Autenticación exitosa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   description: JWT token para autenticación
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     nombre:
+ *                       type: string
+ *                     apellido:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     dni:
+ *                       type: string
+ *                     rango:
+ *                       type: string
+ *                     puerta_acargo:
+ *                       type: string
+ *                     estado:
+ *                       type: string
+ *       400:
+ *         description: Error de validación
  *       401:
  *         description: Credenciales incorrectas
+ *       500:
+ *         description: Error del servidor
  */
 app.post('/login',
   body('email').isEmail().normalizeEmail(),
@@ -165,11 +235,43 @@ app.post('/login',
  * /usuarios:
  *   get:
  *     summary: Listar usuarios (sin contraseñas)
+ *     tags: [Usuarios]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Lista de usuarios
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                   nombre:
+ *                     type: string
+ *                   apellido:
+ *                     type: string
+ *                   dni:
+ *                     type: string
+ *                   email:
+ *                     type: string
+ *                   rango:
+ *                     type: string
+ *                     enum: [admin, guardia]
+ *                   estado:
+ *                     type: string
+ *                     enum: [activo, inactivo]
+ *                   puerta_acargo:
+ *                     type: string
+ *                   telefono:
+ *                     type: string
+ *       401:
+ *         description: No autorizado
+ *       500:
+ *         description: Error del servidor
  */
 app.get('/usuarios', authenticateToken, async (req, res) => {
   try {
@@ -184,6 +286,7 @@ app.get('/usuarios', authenticateToken, async (req, res) => {
  * @openapi
  * /usuarios:
  *   post:
+ *     tags: [Usuarios]
  *     security:
  *       - bearerAuth: []
  *     summary: Crear usuario
@@ -194,6 +297,43 @@ app.get('/usuarios', authenticateToken, async (req, res) => {
  *           schema:
  *             type: object
  *             required: [nombre, apellido, dni, email, password]
+ *             properties:
+ *               nombre:
+ *                 type: string
+ *                 example: Juan
+ *               apellido:
+ *                 type: string
+ *                 example: Pérez
+ *               dni:
+ *                 type: string
+ *                 example: "12345678"
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: juan.perez@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: "password123"
+ *               rango:
+ *                 type: string
+ *                 enum: [admin, guardia]
+ *                 default: guardia
+ *               puerta_acargo:
+ *                 type: string
+ *                 example: "Puerta Principal"
+ *               telefono:
+ *                 type: string
+ *                 example: "+51987654321"
+ *     responses:
+ *       201:
+ *         description: Usuario creado exitosamente
+ *       400:
+ *         description: Error de validación o DNI/email duplicado
+ *       401:
+ *         description: No autorizado
+ *       500:
+ *         description: Error del servidor
  */
 app.post('/usuarios',
   authenticateToken,
@@ -237,9 +377,41 @@ app.post('/usuarios',
  * @openapi
  * /usuarios/{id}/password:
  *   put:
+ *     tags: [Usuarios]
  *     security:
  *       - bearerAuth: []
  *     summary: Cambiar contraseña de usuario
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID del usuario
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 6
+ *                 example: "nuevaPassword123"
+ *     responses:
+ *       200:
+ *         description: Contraseña actualizada exitosamente
+ *       400:
+ *         description: Error de validación
+ *       401:
+ *         description: No autorizado
+ *       404:
+ *         description: Usuario no encontrado
+ *       500:
+ *         description: Error del servidor
  */
 app.put('/usuarios/:id/password',
   authenticateToken,
@@ -271,17 +443,43 @@ const swaggerOptions = {
     info: {
       title: 'API Control Acceso NFC',
       version: '1.0.0',
-      description: 'Documentación OpenAPI para endpoints principales',
+      description: 'Sistema de control de acceso NFC para instalaciones universitarias. API completa con autenticación JWT, gestión de usuarios y validaciones de seguridad.',
+      contact: {
+        name: 'Equipo de Desarrollo',
+        email: 'soporte@universidad.edu'
+      },
+      license: {
+        name: 'MIT',
+        url: 'https://opensource.org/licenses/MIT'
+      }
     },
     servers: [
-      { url: process.env.SWAGGER_SERVER_URL || 'http://localhost:3000' },
+      { 
+        url: process.env.SWAGGER_SERVER_URL || 'http://localhost:3000',
+        description: 'Servidor de desarrollo'
+      },
+    ],
+    tags: [
+      {
+        name: 'General',
+        description: 'Endpoints generales'
+      },
+      {
+        name: 'Autenticación',
+        description: 'Endpoints de autenticación y login'
+      },
+      {
+        name: 'Usuarios',
+        description: 'Gestión de usuarios del sistema'
+      }
     ],
     components: {
       securitySchemes: {
         bearerAuth: {
           type: 'http',
           scheme: 'bearer',
-          bearerFormat: 'JWT'
+          bearerFormat: 'JWT',
+          description: 'JWT token obtenido del endpoint /login'
         }
       }
     }
