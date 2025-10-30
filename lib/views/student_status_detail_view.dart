@@ -427,8 +427,8 @@ class _StudentStatusDetailViewState extends State<StudentStatusDetailView>
                         child: Row(
                           children: [
                             Icon(
-                              asistencia.entradaTipo == 'entrada' ? Icons.login : Icons.logout,
-                              color: asistencia.entradaTipo == 'entrada' ? Colors.green : Colors.red,
+                              asistencia.tipo == TipoMovimiento.entrada ? Icons.login : Icons.logout,
+                              color: asistencia.tipo == TipoMovimiento.entrada ? Colors.green : Colors.red,
                               size: 16,
                             ),
                             SizedBox(width: 8),

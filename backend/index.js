@@ -599,12 +599,189 @@ app.get('/asistencias/ultimo-acceso/:dni', async (req, res) => {
     const ultimaAsistencia = await Asistencia.findOne({ dni }).sort({ fecha_hora: -1 });
     
     if (ultimaAsistencia) {
-      res.json({ ultimo_tipo: ultimaAsistencia.tipo });
+      res.json({ 
+        ultimo_tipo: ultimaAsistencia.tipo,
+        ultima_fecha: ultimaAsistencia.fecha_hora,
+        asistencia_completa: ultimaAsistencia
+      });
     } else {
-      res.json({ ultimo_tipo: 'salida' }); // Si no hay registros, próximo debería ser entrada
+      res.json({ 
+        ultimo_tipo: 'salida', // Si no hay registros, próximo debería ser entrada
+        ultima_fecha: null,
+        asistencia_completa: null
+      });
     }
   } catch (err) {
     res.status(500).json({ error: 'Error al determinar último acceso' });
+  }
+});
+
+// Obtener historial de movimientos de un estudiante
+app.get('/asistencias/historial/:dni', async (req, res) => {
+  try {
+    const { dni } = req.params;
+    const { limit } = req.query;
+    
+    let query = Asistencia.find({ dni }).sort({ fecha_hora: -1 });
+    
+    if (limit) {
+      query = query.limit(parseInt(limit));
+    }
+    
+    const historial = await query;
+    res.json({
+      success: true,
+      historial,
+      count: historial.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener historial' });
+  }
+});
+
+// Validar coherencia de movimiento
+app.post('/asistencias/validar-movimiento', async (req, res) => {
+  try {
+    const { dni, tipo, fecha_hora } = req.body;
+    
+    const ultimaAsistencia = await Asistencia.findOne({ dni }).sort({ fecha_hora: -1 });
+    
+    if (!ultimaAsistencia) {
+      // No hay historial previo
+      if (tipo === 'salida') {
+        return res.json({
+          es_valido: false,
+          tipo_sugerido: 'entrada',
+          motivo: 'No se puede registrar salida sin registro previo de entrada',
+          requiere_autorizacion_manual: true
+        });
+      }
+      return res.json({
+        es_valido: true,
+        tipo_sugerido: 'entrada',
+        motivo: null,
+        requiere_autorizacion_manual: false
+      });
+    }
+
+    // Validar coherencia temporal
+    const fechaMovimiento = new Date(fecha_hora);
+    if (fechaMovimiento < ultimaAsistencia.fecha_hora) {
+      return res.json({
+        es_valido: false,
+        tipo_sugerido: ultimaAsistencia.tipo === 'entrada' ? 'salida' : 'entrada',
+        motivo: 'La fecha/hora del movimiento es anterior al último registro',
+        requiere_autorizacion_manual: true
+      });
+    }
+
+    // Validar secuencia lógica
+    if (ultimaAsistencia.tipo === tipo) {
+      const tipoEsperado = ultimaAsistencia.tipo === 'entrada' ? 'salida' : 'entrada';
+      return res.json({
+        es_valido: false,
+        tipo_sugerido: tipoEsperado,
+        motivo: `El último movimiento fue ${ultimaAsistencia.tipo}. El siguiente debe ser ${tipoEsperado}`,
+        requiere_autorizacion_manual: true
+      });
+    }
+
+    // Validar tiempo mínimo entre movimientos
+    const diferencia = fechaMovimiento - ultimaAsistencia.fecha_hora;
+    if (diferencia < 30000) { // 30 segundos en milisegundos
+      return res.json({
+        es_valido: false,
+        tipo_sugerido: tipo,
+        motivo: 'Movimiento registrado muy rápido después del anterior. Esperar al menos 30 segundos',
+        requiere_autorizacion_manual: false
+      });
+    }
+
+    // Todo correcto
+    return res.json({
+      es_valido: true,
+      tipo_sugerido: tipo,
+      motivo: null,
+      requiere_autorizacion_manual: false
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al validar movimiento' });
+  }
+});
+
+// Calcular estudiantes en campus
+app.get('/asistencias/estudiantes-en-campus', async (req, res) => {
+  try {
+    const asistencias = await Asistencia.find().sort({ fecha_hora: -1 });
+    
+    // Agrupar por estudiante (DNI)
+    const movimientosPorEstudiante = {};
+    
+    asistencias.forEach(asistencia => {
+      if (!movimientosPorEstudiante[asistencia.dni]) {
+        movimientosPorEstudiante[asistencia.dni] = [];
+      }
+      movimientosPorEstudiante[asistencia.dni].push(asistencia);
+    });
+
+    // Para cada estudiante, determinar si está dentro
+    let estudiantesDentro = 0;
+    const estudiantesEnCampus = [];
+    const estudiantesPorFacultad = {};
+
+    for (const dni in movimientosPorEstudiante) {
+      const movimientos = movimientosPorEstudiante[dni];
+      movimientos.sort((a, b) => b.fecha_hora - a.fecha_hora);
+      
+      const ultimoMovimiento = movimientos[0];
+      
+      // Si el último movimiento fue entrada, está dentro
+      if (ultimoMovimiento.tipo === 'entrada') {
+        estudiantesDentro++;
+        estudiantesEnCampus.push({
+          dni: ultimoMovimiento.dni,
+          nombre: ultimoMovimiento.nombre,
+          apellido: ultimoMovimiento.apellido,
+          codigo_universitario: ultimoMovimiento.codigo_universitario,
+          siglas_facultad: ultimoMovimiento.siglas_facultad,
+          ultima_entrada: ultimoMovimiento.fecha_hora
+        });
+
+        // Contar por facultad
+        const facultad = ultimoMovimiento.siglas_facultad || 'N/A';
+        estudiantesPorFacultad[facultad] = (estudiantesPorFacultad[facultad] || 0) + 1;
+      }
+    }
+
+    res.json({
+      success: true,
+      total_estudiantes_en_campus: estudiantesDentro,
+      estudiantes: estudiantesEnCampus,
+      por_facultad: estudiantesPorFacultad
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al calcular estudiantes en campus' });
+  }
+});
+
+// Verificar si estudiante está en campus
+app.get('/asistencias/esta-en-campus/:dni', async (req, res) => {
+  try {
+    const { dni } = req.params;
+    const ultimaAsistencia = await Asistencia.findOne({ dni }).sort({ fecha_hora: -1 });
+    
+    const estaDentro = ultimaAsistencia && ultimaAsistencia.tipo === 'entrada';
+    
+    res.json({
+      success: true,
+      esta_en_campus: estaDentro,
+      ultimo_movimiento: ultimaAsistencia ? {
+        tipo: ultimaAsistencia.tipo,
+        fecha_hora: ultimaAsistencia.fecha_hora
+      } : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al verificar si está en campus' });
   }
 });
 

@@ -296,7 +296,7 @@ class NfcViewModel extends ChangeNotifier {
         codigoUniversitario: estudiante.codigoUniversitario,
         siglasFacultad: estudiante.siglasFacultad,
         siglasEscuela: estudiante.siglasEscuela,
-        tipo: tipoAcceso,
+        tipo: TipoMovimiento.fromString(tipoAcceso) ?? TipoMovimiento.entrada,
         fechaHora: now,
         entradaTipo: 'nfc',
         puerta: _puntoControl ?? 'Desconocida',
