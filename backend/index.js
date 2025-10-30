@@ -2533,6 +2533,260 @@ app.get('/ml/prediction/peak-hours/summary', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE ETL PARA ML ====================
+
+// Importar servicios ETL
+const MLETLService = require('./ml/ml_etl_service');
+const HistoricalDataETL = require('./ml/historical_data_etl');
+const DataCleaningService = require('./ml/data_cleaning_service');
+const DataQualityValidator = require('./ml/data_quality_validator');
+const MLDataStructure = require('./ml/ml_data_structure');
+
+// Instancias de servicios
+const mlETLService = new MLETLService(Asistencia);
+const historicalETL = new HistoricalDataETL(Asistencia);
+const cleaningService = new DataCleaningService();
+const qualityValidator = new DataQualityValidator();
+const mlStructure = new MLDataStructure();
+
+// Ejecutar pipeline ETL completo para ML
+app.post('/ml/etl/pipeline', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      startDate = null,
+      endDate = null,
+      cleanData = true,
+      validateData = true,
+      aggregateByHour = true,
+      normalizeStructure = true
+    } = req.body;
+
+    res.json({
+      success: true,
+      message: 'Pipeline ETL iniciado. El proceso puede tardar varios minutos.',
+      timestamp: new Date()
+    });
+
+    // Ejecutar en segundo plano
+    mlETLService.executeMLETLPipeline({
+      months,
+      startDate,
+      endDate,
+      cleanData,
+      validateData,
+      aggregateByHour,
+      normalizeStructure
+    }).then(result => {
+      console.log('✅ Pipeline ETL completado:', result);
+    }).catch(error => {
+      console.error('❌ Error en pipeline ETL:', error);
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando pipeline ETL', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar ETL básico (extracción, transformación, carga)
+app.post('/ml/etl/basic', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      startDate = null,
+      endDate = null,
+      cleanData = true,
+      validateData = true,
+      aggregateByHour = true
+    } = req.body;
+
+    const result = await historicalETL.executeETLPipeline({
+      months,
+      startDate,
+      endDate,
+      cleanData,
+      validateData,
+      aggregateByHour
+    });
+
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error ejecutando ETL básico', 
+      details: err.message 
+    });
+  }
+});
+
+// Limpiar datos existentes
+app.post('/ml/etl/clean', async (req, res) => {
+  try {
+    const { dataPath, strategy = 'impute' } = req.body;
+
+    if (!dataPath) {
+      return res.status(400).json({ 
+        error: 'dataPath es requerido' 
+      });
+    }
+
+    const fs = require('fs').promises;
+    const content = await fs.readFile(dataPath, 'utf8');
+    const data = JSON.parse(content);
+
+    const result = await cleaningService.cleanDataset(data, {
+      removeOutliers: true,
+      handleMissing: true,
+      missingStrategy: strategy,
+      normalize: false,
+      encodeCategorical: false,
+      validateAfterCleaning: true
+    });
+
+    res.json({
+      success: true,
+      cleanedData: result.cleanedData,
+      report: result.report,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error limpiando datos', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar calidad de datos
+app.post('/ml/etl/validate', async (req, res) => {
+  try {
+    const { dataPath } = req.body;
+
+    if (!dataPath) {
+      return res.status(400).json({ 
+        error: 'dataPath es requerido' 
+      });
+    }
+
+    const validation = await mlETLService.validateExistingDataset(dataPath);
+
+    res.json({
+      success: true,
+      validation,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando datos', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estadísticas del dataset
+app.get('/ml/etl/statistics', async (req, res) => {
+  try {
+    const { dataPath } = req.query;
+
+    const statistics = await mlETLService.getDatasetStatistics(dataPath || null);
+
+    res.json({
+      success: true,
+      statistics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estadísticas', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estructura ML definida
+app.get('/ml/etl/structure', async (req, res) => {
+  try {
+    const structure = mlETLService.getMLStructure();
+
+    res.json({
+      success: true,
+      structure,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estructura ML', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar estructura de datos
+app.post('/ml/etl/validate-structure', async (req, res) => {
+  try {
+    const { data } = req.body;
+
+    if (!data || !Array.isArray(data)) {
+      return res.status(400).json({ 
+        error: 'data debe ser un array' 
+      });
+    }
+
+    const validation = mlStructure.validateStructure(data);
+
+    res.json({
+      success: true,
+      validation,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando estructura', 
+      details: err.message 
+    });
+  }
+});
+
+// Generar reporte de calidad
+app.post('/ml/etl/quality-report', async (req, res) => {
+  try {
+    const { dataPath, data } = req.body;
+
+    let dataset;
+
+    if (dataPath) {
+      const fs = require('fs').promises;
+      const content = await fs.readFile(dataPath, 'utf8');
+      dataset = JSON.parse(content);
+    } else if (data && Array.isArray(data)) {
+      dataset = data;
+    } else {
+      return res.status(400).json({ 
+        error: 'dataPath o data es requerido' 
+      });
+    }
+
+    const report = await mlETLService.generateQualityReport(dataset);
+
+    res.json({
+      success: true,
+      report,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando reporte de calidad', 
+      details: err.message 
+    });
+  }
+});
+
 // Endpoint de salud del sistema
 app.get('/health', async (req, res) => {
   try {
