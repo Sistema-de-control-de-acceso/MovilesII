@@ -1,0 +1,21 @@
+{
+  "name": "moviles2-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "ml:train": "node ml/run_training.js",
+    "ml:validate": "node -e \"require('./ml/dataset_collector'); const collector = new (require('./ml/dataset_collector'))(require('./index').Asistencia); collector.validateDatasetAvailability().then(console.log);\""
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.2",
+    "mongoose": "^6.11.0"
+  },
+  "engines": {
+    "node": ">=12.0.0"
+  }
+}

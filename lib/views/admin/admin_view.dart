@@ -7,6 +7,13 @@ import '../../widgets/custom_button.dart';
 import '../login_view.dart';
 import 'user_management_view.dart';
 import 'reports_view.dart';
+import 'session_config_view.dart';
+import 'historial_view.dart';
+import 'sync_config_view.dart';
+import 'offline_config_view.dart';
+import '../../widgets/connectivity_status_widget.dart';
+import '../student_status_view.dart';
+import '../matriculation_verification_view.dart';
 
 class AdminView extends StatefulWidget {
   @override
@@ -20,6 +27,7 @@ class _AdminViewState extends State<AdminView> {
     AdminDashboard(),
     UserManagementView(),
     ReportsView(),
+    OfflineConfigView(),
   ];
 
   void _handleLogout() {
@@ -62,6 +70,8 @@ class _AdminViewState extends State<AdminView> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         actions: [
+          ConnectivityStatusWidget(),
+          SizedBox(width: 8),
           Consumer<AuthViewModel>(
             builder: (context, authViewModel, child) {
               return PopupMenuButton<String>(
@@ -116,6 +126,10 @@ class _AdminViewState extends State<AdminView> {
           BottomNavigationBarItem(
             icon: Icon(Icons.analytics),
             label: 'Reportes',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.offline_bolt),
+            label: 'Offline',
           ),
         ],
       ),
@@ -425,55 +439,99 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
           ],
         ),
+        SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: CustomButton(
+                text: 'Consultar Estudiante',
+                icon: Icons.person_search,
+                backgroundColor: Colors.purple,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => StudentStatusView(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: CustomButton(
+                text: 'Configurar Sesión',
+                icon: Icons.timer,
+                backgroundColor: Colors.orange,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SessionConfigView(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: CustomButton(
+                text: 'Verificar Matrícula',
+                icon: Icons.school,
+                backgroundColor: Colors.indigo,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MatriculationVerificationView(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: CustomButton(
+                text: 'Sincronización',
+                icon: Icons.sync_alt,
+                backgroundColor: Colors.teal,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => SyncConfigView()),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: CustomButton(
+                text: 'Ver Historial',
+                icon: Icons.history,
+                backgroundColor: Colors.indigo,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => HistorialView()),
+                  );
+                },
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Container(), // Espacio vacío para simetría
+            ),
+          ],
+        ),
       ],
     );
   }
-}
-          Text(
-            title,
-            style: GoogleFonts.lato(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchSection() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(16),
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search, color: Colors.indigo),
-            labelText: 'Buscar (Nombre, DNI, Facultad)',
-            labelStyle: TextStyle(color: Colors.blueGrey[600]),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16.0),
-              borderSide: BorderSide.none,
-            ),
-          ),
-          onChanged: (value) {
-            setState(() {
-              _searchQuery = value;
-            });
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionData {
-  final String facultad;
-  final List<dynamic> users;
-  _SectionData(this.facultad, this.users);
 }
