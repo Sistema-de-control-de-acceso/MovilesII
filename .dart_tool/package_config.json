@@ -681,8 +681,8 @@
     }
   ],
   "generator": "pub",
-  "generatorVersion": "3.9.2",
+  "generatorVersion": "3.9.0",
   "flutterRoot": "file:///C:/flutter",
-  "flutterVersion": "3.35.4",
+  "flutterVersion": "3.35.1",
   "pubCache": "file:///C:/Users/HP/AppData/Local/Pub/Cache"
 }
