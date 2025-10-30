@@ -1430,7 +1430,7 @@ app.get('/ml/reports/comparison', async (req, res) => {
 
     // Generar predicciones
     const PeakHoursPredictor = require('./ml/peak_hours_predictor');
-    const predictor = new PeakHoursPredictor();
+    const predictor = new PeakHoursPredictor(null, Asistencia);
     await predictor.loadLatestModel();
     const predictions = await predictor.predictPeakHours(dateRange);
 
