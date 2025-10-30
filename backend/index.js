@@ -1155,6 +1155,224 @@ app.get('/reportes/guardias', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE MACHINE LEARNING ====================
+
+// Importar servicios de ML
+const DatasetCollector = require('./ml/dataset_collector');
+const TrainTestSplit = require('./ml/train_test_split');
+const TrainingPipeline = require('./ml/training_pipeline');
+const ModelValidator = require('./ml/model_validator');
+const fs = require('fs').promises;
+const path = require('path');
+
+// Instancias de servicios ML (pasar modelo Asistencia)
+const datasetCollector = new DatasetCollector(Asistencia);
+const trainingPipeline = new TrainingPipeline({ collector: datasetCollector });
+
+// Validar disponibilidad de dataset (≥3 meses)
+app.get('/ml/dataset/validate', async (req, res) => {
+  try {
+    const validation = await datasetCollector.validateDatasetAvailability();
+    const statistics = await datasetCollector.getDatasetStatistics();
+    
+    res.json({
+      success: true,
+      validation,
+      statistics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando dataset', 
+      details: err.message 
+    });
+  }
+});
+
+// Recopilar dataset histórico
+app.post('/ml/dataset/collect', async (req, res) => {
+  try {
+    const { months = 3, includeFeatures = true, outputFormat = 'json' } = req.body;
+    
+    const result = await datasetCollector.collectHistoricalDataset({
+      months,
+      includeFeatures,
+      outputFormat
+    });
+    
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error recopilando dataset', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estadísticas del dataset
+app.get('/ml/dataset/statistics', async (req, res) => {
+  try {
+    const statistics = await datasetCollector.getDatasetStatistics();
+    
+    res.json({
+      success: true,
+      statistics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estadísticas', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar pipeline completo de entrenamiento
+app.post('/ml/pipeline/train', async (req, res) => {
+  try {
+    const { 
+      months = 3, 
+      testSize = 0.2, 
+      modelType = 'logistic_regression',
+      stratify = 'target'
+    } = req.body;
+    
+    // Ejecutar pipeline asíncrono (puede tardar)
+    res.json({
+      success: true,
+      message: 'Pipeline de entrenamiento iniciado. Verifique el endpoint /ml/pipeline/status para el progreso.',
+      timestamp: new Date()
+    });
+    
+    // Ejecutar en segundo plano
+    trainingPipeline.executePipeline({
+      months,
+      testSize,
+      modelType,
+      stratify,
+      collector: datasetCollector
+    }).then(result => {
+      console.log('✅ Pipeline completado:', result);
+    }).catch(error => {
+      console.error('❌ Error en pipeline:', error);
+    });
+    
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando pipeline', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener modelos entrenados disponibles
+app.get('/ml/models', async (req, res) => {
+  try {
+    const modelsDir = path.join(__dirname, 'data/models');
+    
+    try {
+      const files = await fs.readdir(modelsDir);
+      const models = [];
+      
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          const filePath = path.join(modelsDir, file);
+          const content = await fs.readFile(filePath, 'utf8');
+          const modelData = JSON.parse(content);
+          
+          models.push({
+            filename: file,
+            modelType: modelData.modelType,
+            createdAt: modelData.createdAt,
+            version: modelData.version,
+            validation: {
+              accuracy: modelData.validation?.accuracy,
+              f1Score: modelData.validation?.f1Score
+            }
+          });
+        }
+      }
+      
+      res.json({
+        success: true,
+        models,
+        count: models.length,
+        timestamp: new Date()
+      });
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        res.json({
+          success: true,
+          models: [],
+          count: 0,
+          message: 'No hay modelos entrenados aún',
+          timestamp: new Date()
+        });
+      } else {
+        throw err;
+      }
+    }
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo modelos', 
+      details: err.message 
+    });
+  }
+});
+
+// Hacer predicción con modelo entrenado
+app.post('/ml/models/predict', async (req, res) => {
+  try {
+    const { modelFilename, features } = req.body;
+    
+    if (!modelFilename || !features) {
+      return res.status(400).json({ 
+        error: 'modelFilename y features son requeridos' 
+      });
+    }
+    
+    const modelPath = path.join(__dirname, 'data/models', modelFilename);
+    const modelContent = await fs.readFile(modelPath, 'utf8');
+    const modelData = JSON.parse(modelContent);
+    
+    // Realizar predicción (simplificada)
+    const prediction = predictWithModel(modelData.model, features, modelData.features);
+    
+    res.json({
+      success: true,
+      prediction,
+      modelType: modelData.modelType,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error en predicción', 
+      details: err.message 
+    });
+  }
+});
+
+// Función auxiliar para predicción
+function predictWithModel(model, features, featureNames) {
+  // Implementación simplificada
+  if (model.type === 'logistic_regression' || model.weights) {
+    const linearCombination = features.reduce((sum, val, i) => 
+      sum + val * (model.weights[i] || 0), 0) + (model.bias || 0);
+    const probability = 1 / (1 + Math.exp(-Math.max(-500, Math.min(500, linearCombination))));
+    return {
+      prediction: probability >= 0.5 ? 1 : 0,
+      probability: probability,
+      confidence: Math.abs(probability - 0.5) * 2
+    };
+  }
+  
+  return { prediction: 0, probability: 0.5, confidence: 0 };
+}
+
 // Endpoint de salud del sistema
 app.get('/health', async (req, res) => {
   try {
@@ -1163,10 +1381,10 @@ app.get('/health', async (req, res) => {
     
     // Contar registros en colecciones principales
     const stats = {
-      usuarios: await Usuario.countDocuments(),
+      usuarios: await User.countDocuments(),
       alumnos: await Alumno.countDocuments(),
       asistencias: await Asistencia.countDocuments(),
-      sesiones_activas: await SesionGuardia.countDocuments({ activa: true })
+      sesiones_activas: await SessionGuard.countDocuments({ is_active: true })
     };
 
     res.json({
@@ -1190,5 +1408,5 @@ app.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
   console.log(`✅ Backend completo con ${Object.keys(require('./package.json').dependencies).length} dependencias`);
   console.log(`✅ MongoDB conectado a base de datos: ASISTENCIA`);
-  console.log(`✅ Endpoints disponibles: 25+ rutas REST`);
+  console.log(`✅ Endpoints disponibles: 30+ rutas REST (incluye ML)`);
 });
