@@ -4,7 +4,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js"
+    "dev": "node index.js",
+    "ml:train": "node ml/run_training.js",
+    "ml:validate": "node -e \"require('./ml/dataset_collector'); const collector = new (require('./ml/dataset_collector'))(require('./index').Asistencia); collector.validateDatasetAvailability().then(console.log);\""
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
