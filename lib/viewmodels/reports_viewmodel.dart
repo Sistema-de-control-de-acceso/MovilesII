@@ -15,6 +15,12 @@ class ReportsViewModel extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // Filtros activos
+  DateTime? _fechaInicioFilter;
+  DateTime? _fechaFinFilter;
+  String? _carreraFilter;
+  String? _facultadFilter;
+
   // Getters
   List<AsistenciaModel> get asistencias => _asistencias;
   List<FacultadModel> get facultades => _facultades;
@@ -22,6 +28,34 @@ class ReportsViewModel extends ChangeNotifier {
   List<AlumnoModel> get alumnos => _alumnos;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  // Getters para datos filtrados
+  List<AsistenciaModel> get asistenciasFiltradas => _applyFilters(_asistencias);
+  List<AlumnoModel> get alumnosFiltrados {
+    if (_carreraFilter == null && _facultadFilter == null) {
+      return _alumnos;
+    }
+    return _alumnos.where((alumno) {
+      bool matches = true;
+      if (_facultadFilter != null) {
+        matches = matches && alumno.siglasFacultad == _facultadFilter;
+      }
+      if (_carreraFilter != null) {
+        matches = matches && alumno.siglasEscuela == _carreraFilter;
+      }
+      return matches;
+    }).toList();
+  }
+
+  // Lista de siglas de escuelas (carreras) para dropdown
+  List<String> get listaCarreras {
+    return _escuelas.map((e) => e.siglas ?? e.nombre ?? '').where((s) => s.isNotEmpty).toSet().toList()..sort();
+  }
+
+  // Lista de siglas de facultades para dropdown
+  List<String> get listaFacultades {
+    return _facultades.map((f) => f.siglas ?? f.nombre ?? '').where((s) => s.isNotEmpty).toSet().toList()..sort();
+  }
 
   // Cargar todos los datos
   Future<void> loadAllData() async {
@@ -66,8 +100,9 @@ class ReportsViewModel extends ChangeNotifier {
   // Filtros y análisis
 
   // Asistencias por fecha
-  List<AsistenciaModel> getAsistenciasByDate(DateTime date) {
-    return _asistencias.where((asistencia) {
+  List<AsistenciaModel> getAsistenciasByDate(DateTime date, {List<AsistenciaModel>? asistencias}) {
+    final listaAsistencias = asistencias ?? _asistencias;
+    return listaAsistencias.where((asistencia) {
       return asistencia.fechaHora.year == date.year &&
           asistencia.fechaHora.month == date.month &&
           asistencia.fechaHora.day == date.day;
@@ -77,9 +112,11 @@ class ReportsViewModel extends ChangeNotifier {
   // Asistencias por rango de fechas
   List<AsistenciaModel> getAsistenciasByDateRange(
     DateTime start,
-    DateTime end,
-  ) {
-    return _asistencias.where((asistencia) {
+    DateTime end, {
+    List<AsistenciaModel>? asistencias,
+  }) {
+    final listaAsistencias = asistencias ?? _asistencias;
+    return listaAsistencias.where((asistencia) {
       return asistencia.fechaHora.isAfter(start) &&
           asistencia.fechaHora.isBefore(end.add(Duration(days: 1)));
     }).toList();
@@ -99,26 +136,98 @@ class ReportsViewModel extends ChangeNotifier {
         .toList();
   }
 
+  // ==================== FILTROS MÚLTIPLES ====================
+
+  /// Aplicar filtros múltiples a las asistencias
+  List<AsistenciaModel> _applyFilters(List<AsistenciaModel> asistencias) {
+    List<AsistenciaModel> filtered = asistencias;
+
+    // Filtro por rango de fechas
+    if (_fechaInicioFilter != null || _fechaFinFilter != null) {
+      final inicio = _fechaInicioFilter ?? DateTime(2000);
+      final fin = _fechaFinFilter ?? DateTime.now().add(Duration(days: 365));
+      
+      filtered = filtered.where((asistencia) {
+        final fecha = asistencia.fechaHora;
+        return fecha.isAfter(inicio.subtract(Duration(days: 1))) &&
+               fecha.isBefore(fin.add(Duration(days: 1)));
+      }).toList();
+    }
+
+    // Filtro por facultad
+    if (_facultadFilter != null) {
+      filtered = filtered.where((asistencia) {
+        return asistencia.siglasFacultad == _facultadFilter;
+      }).toList();
+    }
+
+    // Filtro por carrera/escuela
+    if (_carreraFilter != null) {
+      filtered = filtered.where((asistencia) {
+        return asistencia.siglasEscuela == _carreraFilter;
+      }).toList();
+    }
+
+    return filtered;
+  }
+
+  /// Actualizar filtros
+  void updateFilters({
+    DateTime? fechaInicio,
+    DateTime? fechaFin,
+    String? carrera,
+    String? facultad,
+  }) {
+    _fechaInicioFilter = fechaInicio;
+    _fechaFinFilter = fechaFin;
+    _carreraFilter = carrera;
+    _facultadFilter = facultad;
+    notifyListeners();
+  }
+
+  /// Limpiar todos los filtros
+  void clearFilters() {
+    _fechaInicioFilter = null;
+    _fechaFinFilter = null;
+    _carreraFilter = null;
+    _facultadFilter = null;
+    notifyListeners();
+  }
+
+  /// Verificar si hay filtros activos
+  bool get tieneFiltrosActivos =>
+      _fechaInicioFilter != null ||
+      _fechaFinFilter != null ||
+      _carreraFilter != null ||
+      _facultadFilter != null;
+
   // Estadísticas
 
   // Total asistencias hoy
   int getTotalAsistenciasHoy() {
     final hoy = DateTime.now();
-    return getAsistenciasByDate(hoy).length;
+    final asistencias = _fechaInicioFilter != null || _fechaFinFilter != null
+        ? asistenciasFiltradas
+        : _asistencias;
+    return getAsistenciasByDate(hoy, asistencias: asistencias).length;
   }
 
   // Total asistencias esta semana
   int getTotalAsistenciasEstaSemana() {
     final ahora = DateTime.now();
     final inicioSemana = ahora.subtract(Duration(days: ahora.weekday - 1));
-    return getAsistenciasByDateRange(inicioSemana, ahora).length;
+    final asistencias = _fechaInicioFilter != null || _fechaFinFilter != null
+        ? asistenciasFiltradas
+        : _asistencias;
+    return getAsistenciasByDateRange(inicioSemana, ahora, asistencias: asistencias).length;
   }
 
   // Asistencias por hora del día
-  Map<int, int> getAsistenciasPorHora() {
+  Map<int, int> getAsistenciasPorHora({List<AsistenciaModel>? asistencias}) {
+    final listaAsistencias = asistencias ?? asistenciasFiltradas;
     Map<int, int> asistenciasPorHora = {};
 
-    for (var asistencia in _asistencias) {
+    for (var asistencia in listaAsistencias) {
       int hora = asistencia.fechaHora.hour;
       asistenciasPorHora[hora] = (asistenciasPorHora[hora] ?? 0) + 1;
     }
@@ -127,10 +236,11 @@ class ReportsViewModel extends ChangeNotifier {
   }
 
   // Top facultades con más asistencias
-  List<MapEntry<String, int>> getTopFacultades({int limit = 5}) {
+  List<MapEntry<String, int>> getTopFacultades({int limit = 5, List<AsistenciaModel>? asistencias}) {
+    final listaAsistencias = asistencias ?? asistenciasFiltradas;
     Map<String, int> asistenciasPorFacultad = {};
 
-    for (var asistencia in _asistencias) {
+    for (var asistencia in listaAsistencias) {
       asistenciasPorFacultad[asistencia.siglasFacultad] =
           (asistenciasPorFacultad[asistencia.siglasFacultad] ?? 0) + 1;
     }
