@@ -1156,6 +1156,1841 @@ app.get('/reportes/guardias', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE MACHINE LEARNING ====================
+
+// Importar servicios de ML
+const DatasetCollector = require('./ml/dataset_collector');
+const TrainTestSplit = require('./ml/train_test_split');
+const TrainingPipeline = require('./ml/training_pipeline');
+const ModelValidator = require('./ml/model_validator');
+const fs = require('fs').promises;
+const path = require('path');
+
+// Instancias de servicios ML (pasar modelo Asistencia)
+const datasetCollector = new DatasetCollector(Asistencia);
+const trainingPipeline = new TrainingPipeline({ collector: datasetCollector });
+
+// Validar disponibilidad de dataset (≥3 meses)
+app.get('/ml/dataset/validate', async (req, res) => {
+  try {
+    const validation = await datasetCollector.validateDatasetAvailability();
+    const statistics = await datasetCollector.getDatasetStatistics();
+    
+    res.json({
+      success: true,
+      validation,
+      statistics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando dataset', 
+      details: err.message 
+    });
+  }
+});
+
+// Recopilar dataset histórico
+app.post('/ml/dataset/collect', async (req, res) => {
+  try {
+    const { months = 3, includeFeatures = true, outputFormat = 'json' } = req.body;
+    
+    const result = await datasetCollector.collectHistoricalDataset({
+      months,
+      includeFeatures,
+      outputFormat
+    });
+    
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error recopilando dataset', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estadísticas del dataset
+app.get('/ml/dataset/statistics', async (req, res) => {
+  try {
+    const statistics = await datasetCollector.getDatasetStatistics();
+    
+    res.json({
+      success: true,
+      statistics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estadísticas', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar pipeline completo de entrenamiento
+app.post('/ml/pipeline/train', async (req, res) => {
+  try {
+    const { 
+      months = 3, 
+      testSize = 0.2, 
+      modelType = 'logistic_regression',
+      stratify = 'target'
+    } = req.body;
+    
+    // Ejecutar pipeline asíncrono (puede tardar)
+    res.json({
+      success: true,
+      message: 'Pipeline de entrenamiento iniciado. Verifique el endpoint /ml/pipeline/status para el progreso.',
+      timestamp: new Date()
+    });
+    
+    // Ejecutar en segundo plano
+    trainingPipeline.executePipeline({
+      months,
+      testSize,
+      modelType,
+      stratify,
+      collector: datasetCollector
+    }).then(result => {
+      console.log('✅ Pipeline completado:', result);
+    }).catch(error => {
+      console.error('❌ Error en pipeline:', error);
+    });
+    
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando pipeline', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener modelos entrenados disponibles
+app.get('/ml/models', async (req, res) => {
+  try {
+    const modelsDir = path.join(__dirname, 'data/models');
+    
+    try {
+      const files = await fs.readdir(modelsDir);
+      const models = [];
+      
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          const filePath = path.join(modelsDir, file);
+          const content = await fs.readFile(filePath, 'utf8');
+          const modelData = JSON.parse(content);
+          
+          models.push({
+            filename: file,
+            modelType: modelData.modelType,
+            createdAt: modelData.createdAt,
+            version: modelData.version,
+            validation: {
+              accuracy: modelData.validation?.accuracy,
+              f1Score: modelData.validation?.f1Score
+            }
+          });
+        }
+      }
+      
+      res.json({
+        success: true,
+        models,
+        count: models.length,
+        timestamp: new Date()
+      });
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        res.json({
+          success: true,
+          models: [],
+          count: 0,
+          message: 'No hay modelos entrenados aún',
+          timestamp: new Date()
+        });
+      } else {
+        throw err;
+      }
+    }
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo modelos', 
+      details: err.message 
+    });
+  }
+});
+
+// Hacer predicción con modelo entrenado
+app.post('/ml/models/predict', async (req, res) => {
+  try {
+    const { modelFilename, features } = req.body;
+    
+    if (!modelFilename || !features) {
+      return res.status(400).json({ 
+        error: 'modelFilename y features son requeridos' 
+      });
+    }
+    
+    const modelPath = path.join(__dirname, 'data/models', modelFilename);
+    const modelContent = await fs.readFile(modelPath, 'utf8');
+    const modelData = JSON.parse(modelContent);
+    
+    // Realizar predicción (simplificada)
+    const prediction = predictWithModel(modelData.model, features, modelData.features);
+    
+    res.json({
+      success: true,
+      prediction,
+      modelType: modelData.modelType,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error en predicción', 
+      details: err.message 
+    });
+  }
+});
+
+// Función auxiliar para predicción
+function predictWithModel(model, features, featureNames) {
+  // Implementación simplificada
+  if (model.type === 'logistic_regression' || model.weights) {
+    const linearCombination = features.reduce((sum, val, i) => 
+      sum + val * (model.weights[i] || 0), 0) + (model.bias || 0);
+    const probability = 1 / (1 + Math.exp(-Math.max(-500, Math.min(500, linearCombination))));
+    return {
+      prediction: probability >= 0.5 ? 1 : 0,
+      probability: probability,
+      confidence: Math.abs(probability - 0.5) * 2
+    };
+  }
+  
+  return { prediction: 0, probability: 0.5, confidence: 0 };
+}
+
+// ==================== ENDPOINTS DE REPORTES DE HORARIOS PICO ML ====================
+
+// Importar servicio de reportes de horarios pico
+const PeakHoursReportService = require('./ml/peak_hours_report_service');
+
+// Instancia del servicio
+const peakHoursReportService = new PeakHoursReportService(Asistencia);
+
+// Generar reporte completo de horarios pico con ML
+app.get('/ml/reports/peak-hours', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 }; // Última semana por defecto
+    }
+
+    const report = await peakHoursReportService.generatePeakHoursReport(dateRange, {
+      includeComparison: true,
+      includeSuggestions: true,
+      includeHourlyMetrics: true
+    });
+
+    res.json({
+      success: true,
+      report,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando reporte de horarios pico', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener comparación ML vs Real
+app.get('/ml/reports/comparison', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    // Generar predicciones
+    const PeakHoursPredictor = require('./ml/peak_hours_predictor');
+    const predictor = new PeakHoursPredictor(null, Asistencia);
+    await predictor.loadLatestModel();
+    const predictions = await predictor.predictPeakHours(dateRange);
+
+    // Comparar con datos reales
+    const MLRealComparison = require('./ml/ml_real_comparison');
+    const comparison = new MLRealComparison(Asistencia);
+    const result = await comparison.compareMLvsReal(predictions.predictions, predictions.dateRange);
+
+    res.json({
+      success: true,
+      comparison: result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error comparando ML vs Real', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas de precisión por horario
+app.get('/ml/reports/hourly-metrics', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const report = await peakHoursReportService.generatePeakHoursReport(dateRange, {
+      includeComparison: true,
+      includeSuggestions: false,
+      includeHourlyMetrics: true
+    });
+
+    res.json({
+      success: true,
+      hourlyMetrics: report.hourlyMetrics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas por horario', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener sugerencias de ajuste
+app.get('/ml/reports/suggestions', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const report = await peakHoursReportService.generatePeakHoursReport(dateRange, {
+      includeComparison: true,
+      includeSuggestions: true,
+      includeHourlyMetrics: false
+    });
+
+    res.json({
+      success: true,
+      suggestions: report.suggestions,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo sugerencias', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener resumen para dashboard
+app.get('/ml/reports/dashboard-summary', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const summary = await peakHoursReportService.getDashboardSummary(dateRange);
+
+    res.json({
+      success: true,
+      summary,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo resumen del dashboard', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE DASHBOARD DE MONITOREO ML ====================
+
+// Importar servicios de monitoreo ML
+const MLMonitoringDashboard = require('./ml/ml_monitoring_dashboard');
+const MLMetricsService = require('./ml/ml_metrics_service');
+const TemporalMetricsEvolution = require('./ml/temporal_metrics_evolution');
+
+// Instancias de servicios
+const mlDashboard = new MLMonitoringDashboard(Asistencia);
+const mlMetricsService = new MLMetricsService(Asistencia);
+const temporalEvolution = new TemporalMetricsEvolution();
+
+// Dashboard completo de monitoreo ML
+app.get('/ml/dashboard', async (req, res) => {
+  try {
+    const { startDate, endDate, days, evolutionDays = 30 } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 }; // Última semana por defecto
+    }
+
+    const dashboard = await mlDashboard.generateDashboard(dateRange, {
+      includeEvolution: true,
+      evolutionDays: parseInt(evolutionDays),
+      includeComparison: true,
+      includeDetailedMetrics: true
+    });
+
+    res.json({
+      success: true,
+      dashboard,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando dashboard de monitoreo ML', 
+      details: err.message 
+    });
+  }
+});
+
+// Resumen rápido del dashboard
+app.get('/ml/dashboard/summary', async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    
+    const summary = await mlDashboard.getQuickSummary(parseInt(days));
+
+    res.json({
+      success: true,
+      summary,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo resumen del dashboard', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas actuales
+app.get('/ml/metrics/current', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    // Obtener comparación
+    const PeakHoursPredictor = require('./ml/peak_hours_predictor');
+    const predictor = new PeakHoursPredictor(null, Asistencia);
+    await predictor.loadLatestModel();
+    
+    const predictions = await predictor.predictPeakHours(dateRange);
+    const comparison = await mlDashboard.comparison.compareMLvsReal(
+      predictions.predictions,
+      predictions.dateRange
+    );
+
+    // Calcular métricas
+    const metrics = mlMetricsService.generateMetricsReport(comparison);
+
+    res.json({
+      success: true,
+      metrics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas actuales', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener evolución temporal de métricas
+app.get('/ml/metrics/evolution', async (req, res) => {
+  try {
+    const { metric = 'f1Score', days = 30 } = req.query;
+    
+    const evolution = await temporalEvolution.getMetricEvolution(metric, parseInt(days));
+
+    res.json({
+      success: true,
+      evolution,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo evolución de métricas', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener evolución de múltiples métricas
+app.get('/ml/metrics/evolution/multiple', async (req, res) => {
+  try {
+    const { metrics = 'accuracy,precision,recall,f1Score', days = 30 } = req.query;
+    
+    const metricNames = metrics.split(',').map(m => m.trim());
+    const evolutions = await temporalEvolution.getMultipleMetricsEvolution(
+      metricNames,
+      parseInt(days)
+    );
+
+    res.json({
+      success: true,
+      evolutions,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo evolución de métricas múltiples', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener historial completo de métricas
+app.get('/ml/metrics/history', async (req, res) => {
+  try {
+    const { limit = 100 } = req.query;
+    
+    const history = await temporalEvolution.getAllMetricsHistory(parseInt(limit));
+
+    res.json({
+      success: true,
+      history,
+      count: history.length,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo historial de métricas', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener última métrica guardada
+app.get('/ml/metrics/latest', async (req, res) => {
+  try {
+    const latest = await temporalEvolution.getLatestMetrics();
+
+    res.json({
+      success: true,
+      latest: latest || null,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo última métrica', 
+      details: err.message 
+    });
+  }
+});
+
+// Comparar métricas actuales con históricas
+app.get('/ml/metrics/compare-history', async (req, res) => {
+  try {
+    const { startDate, endDate, days = 7, comparisonDays = 30 } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    // Obtener métricas actuales
+    const PeakHoursPredictor = require('./ml/peak_hours_predictor');
+    const predictor = new PeakHoursPredictor(null, Asistencia);
+    await predictor.loadLatestModel();
+    
+    const predictions = await predictor.predictPeakHours(dateRange);
+    const comparison = await mlDashboard.comparison.compareMLvsReal(
+      predictions.predictions,
+      predictions.dateRange
+    );
+
+    const metrics = mlMetricsService.generateMetricsReport(comparison);
+
+    // Comparar con historial
+    const historicalComparison = await temporalEvolution.compareWithHistory(
+      metrics,
+      parseInt(comparisonDays)
+    );
+
+    res.json({
+      success: true,
+      current: metrics.summary,
+      comparison: historicalComparison,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error comparando con historial', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener alertas del modelo
+app.get('/ml/dashboard/alerts', async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    
+    const dateRange = { days: parseInt(days) };
+    const dashboard = await mlDashboard.generateDashboard(dateRange, {
+      includeEvolution: true,
+      evolutionDays: 30,
+      includeComparison: true,
+      includeDetailedMetrics: true
+    });
+
+    res.json({
+      success: true,
+      alerts: dashboard.dashboard.alerts,
+      count: dashboard.dashboard.alerts.length,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo alertas', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener recomendaciones
+app.get('/ml/dashboard/recommendations', async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    
+    const dateRange = { days: parseInt(days) };
+    const dashboard = await mlDashboard.generateDashboard(dateRange, {
+      includeEvolution: true,
+      evolutionDays: 30,
+      includeComparison: true,
+      includeDetailedMetrics: true
+    });
+
+    res.json({
+      success: true,
+      recommendations: dashboard.dashboard.recommendations,
+      count: dashboard.dashboard.recommendations.length,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo recomendaciones', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE VISUALIZACIÓN DE PREDICCIONES ML ====================
+
+// Importar servicios de visualización y actualización
+const PredictionVisualizationService = require('./ml/prediction_visualization_service');
+const AutoModelUpdateService = require('./ml/auto_model_update_service');
+
+// Instancias de servicios
+const visualizationService = new PredictionVisualizationService(Asistencia);
+const autoUpdateService = new AutoModelUpdateService(Asistencia);
+
+// Cargar historial de actualizaciones al iniciar
+autoUpdateService.loadUpdateHistory().catch(err => 
+  console.warn('Error cargando historial de actualizaciones:', err.message)
+);
+
+// Generar datos de visualización para gráficos
+app.get('/ml/visualization/data', async (req, res) => {
+  try {
+    const { startDate, endDate, days, granularity = 'hour' } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const data = await visualizationService.generateVisualizationData(dateRange, {
+      granularity,
+      includeConfidenceIntervals: true,
+      includeRealData: true
+    });
+
+    res.json({
+      success: true,
+      data,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando datos de visualización', 
+      details: err.message 
+    });
+  }
+});
+
+// Generar datos para gráfico de líneas (predicción vs real)
+app.get('/ml/visualization/line-chart', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const chartData = await visualizationService.generateLineChartData(dateRange);
+
+    res.json({
+      success: true,
+      chartData,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando gráfico de líneas', 
+      details: err.message 
+    });
+  }
+});
+
+// Generar datos para gráfico de barras (comparación diaria)
+app.get('/ml/visualization/bar-chart', async (req, res) => {
+  try {
+    const { startDate, endDate, days } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const chartData = await visualizationService.generateBarChartData(dateRange);
+
+    res.json({
+      success: true,
+      chartData,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando gráfico de barras', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener datos con intervalos de confianza
+app.get('/ml/visualization/confidence-intervals', async (req, res) => {
+  try {
+    const { startDate, endDate, days, confidenceLevel = 0.95 } = req.query;
+    
+    let dateRange;
+    if (startDate && endDate) {
+      dateRange = { startDate, endDate };
+    } else if (days) {
+      dateRange = { days: parseInt(days) };
+    } else {
+      dateRange = { days: 7 };
+    }
+
+    const data = await visualizationService.generateVisualizationData(dateRange, {
+      granularity: 'hour',
+      includeConfidenceIntervals: true,
+      includeRealData: true
+    });
+
+    res.json({
+      success: true,
+      confidenceIntervals: data.confidenceIntervals,
+      chartData: data.chartData.filter(d => d.confidenceInterval !== null),
+      confidenceLevel: parseFloat(confidenceLevel),
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo intervalos de confianza', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE ACTUALIZACIÓN AUTOMÁTICA ====================
+
+// Configurar actualización automática
+app.post('/ml/auto-update/configure', async (req, res) => {
+  try {
+    const config = req.body;
+    
+    const result = autoUpdateService.configureAutoUpdate(config);
+
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error configurando actualización automática', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener configuración de actualización automática
+app.get('/ml/auto-update/config', async (req, res) => {
+  try {
+    const config = autoUpdateService.getConfig();
+
+    res.json({
+      success: true,
+      config,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo configuración', 
+      details: err.message 
+    });
+  }
+});
+
+// Verificar datos nuevos para actualización
+app.get('/ml/auto-update/check', async (req, res) => {
+  try {
+    const { days } = req.query;
+    
+    const checkResult = await autoUpdateService.checkForNewData(
+      days ? parseInt(days) : null
+    );
+
+    res.json({
+      success: true,
+      check: checkResult,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error verificando datos nuevos', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar verificación y actualización automática
+app.post('/ml/auto-update/execute', async (req, res) => {
+  try {
+    const result = await autoUpdateService.performAutoUpdateCheck();
+
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error ejecutando actualización automática', 
+      details: err.message 
+    });
+  }
+});
+
+// Programar actualización automática
+app.post('/ml/auto-update/schedule', async (req, res) => {
+  try {
+    const schedule = autoUpdateService.scheduleAutoUpdate();
+
+    res.json({
+      success: true,
+      schedule,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error programando actualización', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estadísticas de actualizaciones
+app.get('/ml/auto-update/statistics', async (req, res) => {
+  try {
+    const stats = autoUpdateService.getUpdateStatistics();
+
+    res.json({
+      success: true,
+      statistics: stats,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estadísticas', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar actualización manual
+app.post('/ml/auto-update/manual', async (req, res) => {
+  try {
+    const { months = 3, testSize = 0.2, modelType = 'logistic_regression' } = req.body;
+    
+    // Ejecutar en segundo plano
+    res.json({
+      success: true,
+      message: 'Actualización manual iniciada. Verifique el endpoint /ml/auto-update/statistics para el progreso.',
+      timestamp: new Date()
+    });
+
+    autoUpdateService.executeManualUpdate({
+      months,
+      testSize,
+      modelType
+    }).then(result => {
+      console.log('✅ Actualización manual completada:', result);
+    }).catch(error => {
+      console.error('❌ Error en actualización manual:', error);
+    });
+    
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando actualización manual', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE REGRESIÓN LINEAL ====================
+
+// Importar servicios de regresión lineal
+const LinearRegressionService = require('./ml/linear_regression_service');
+const CrossValidation = require('./ml/cross_validation');
+const ParameterOptimizer = require('./ml/parameter_optimizer');
+
+// Instancia del servicio
+const linearRegressionService = new LinearRegressionService(Asistencia);
+
+// Entrenar modelo de regresión lineal
+app.post('/ml/regression/train', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      featureColumns = null,
+      targetColumn = 'target',
+      testSize = 0.2,
+      optimizeParams = true,
+      cvFolds = 5,
+      targetR2 = 0.7
+    } = req.body;
+
+    res.json({
+      success: true,
+      message: 'Entrenamiento de regresión lineal iniciado. Verifique el endpoint /ml/regression/status para el progreso.',
+      timestamp: new Date()
+    });
+
+    // Ejecutar en segundo plano
+    linearRegressionService.trainRegressionModel({
+      months,
+      featureColumns,
+      targetColumn,
+      testSize,
+      optimizeParams,
+      cvFolds,
+      targetR2
+    }).then(result => {
+      console.log('✅ Regresión lineal entrenada:', result);
+    }).catch(error => {
+      console.error('❌ Error en entrenamiento:', error);
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando entrenamiento de regresión lineal', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas del modelo de regresión
+app.get('/ml/regression/metrics', async (req, res) => {
+  try {
+    const metrics = await linearRegressionService.getModelMetrics();
+
+    res.json({
+      success: true,
+      metrics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas de regresión', 
+      details: err.message 
+    });
+  }
+});
+
+// Realizar predicción con modelo de regresión
+app.post('/ml/regression/predict', async (req, res) => {
+  try {
+    const { features } = req.body;
+
+    if (!features || !Array.isArray(features)) {
+      return res.status(400).json({ 
+        error: 'features debe ser un array' 
+      });
+    }
+
+    const prediction = await linearRegressionService.predict(features);
+
+    res.json({
+      success: true,
+      prediction: Array.isArray(prediction) ? prediction : [prediction],
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error en predicción de regresión', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar validación cruzada
+app.post('/ml/regression/cross-validate', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      featureColumns = null,
+      targetColumn = 'target',
+      k = 5,
+      modelOptions = {}
+    } = req.body;
+
+    // Recopilar dataset
+    const collectionResult = await linearRegressionService.collector.collectHistoricalDataset({
+      months,
+      includeFeatures: true,
+      outputFormat: 'json'
+    });
+
+    const datasetContent = await fs.readFile(collectionResult.filepath, 'utf8');
+    const dataset = JSON.parse(datasetContent);
+
+    // Preparar datos
+    const features = featureColumns || linearRegressionService.detectFeatureColumns(dataset);
+    const { X, y } = linearRegressionService.prepareRegressionData(dataset, features, targetColumn);
+
+    // Ejecutar validación cruzada
+    const cvValidator = new CrossValidation({ k });
+    const cvResults = cvValidator.crossValidateMultipleMetrics(X, y, modelOptions);
+
+    res.json({
+      success: true,
+      crossValidation: cvResults,
+      meetsR2Threshold: cvResults.summary.r2 >= 0.7,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error en validación cruzada', 
+      details: err.message 
+    });
+  }
+});
+
+// Optimizar parámetros del modelo
+app.post('/ml/regression/optimize', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      featureColumns = null,
+      targetColumn = 'target',
+      cvFolds = 5,
+      targetR2 = 0.7,
+      method = 'grid' // 'grid' o 'random'
+    } = req.body;
+
+    // Recopilar dataset
+    const collectionResult = await linearRegressionService.collector.collectHistoricalDataset({
+      months,
+      includeFeatures: true,
+      outputFormat: 'json'
+    });
+
+    const datasetContent = await fs.readFile(collectionResult.filepath, 'utf8');
+    const dataset = JSON.parse(datasetContent);
+
+    // Preparar datos
+    const features = featureColumns || linearRegressionService.detectFeatureColumns(dataset);
+    const { X, y } = linearRegressionService.prepareRegressionData(dataset, features, targetColumn);
+
+    // Optimizar parámetros
+    const optimizer = new ParameterOptimizer();
+    
+    let optimizationResult;
+    if (method === 'random') {
+      optimizationResult = optimizer.randomSearch(X, y, {}, 20, cvFolds);
+    } else {
+      optimizationResult = optimizer.optimizeForR2(X, y, targetR2, cvFolds);
+    }
+
+    res.json({
+      success: true,
+      optimization: optimizationResult,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error optimizando parámetros', 
+      details: err.message 
+    });
+  }
+});
+
+// Evaluar modelo con conjunto de prueba
+app.post('/ml/regression/evaluate', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      featureColumns = null,
+      targetColumn = 'target',
+      testSize = 0.2
+    } = req.body;
+
+    // Recopilar dataset
+    const collectionResult = await linearRegressionService.collector.collectHistoricalDataset({
+      months,
+      includeFeatures: true,
+      outputFormat: 'json'
+    });
+
+    const datasetContent = await fs.readFile(collectionResult.filepath, 'utf8');
+    const dataset = JSON.parse(datasetContent);
+
+    // Preparar datos
+    const features = featureColumns || linearRegressionService.detectFeatureColumns(dataset);
+    const { X, y } = linearRegressionService.prepareRegressionData(dataset, features, targetColumn);
+
+    // Split train/test
+    const splitIndex = Math.floor(X.length * (1 - testSize));
+    const X_test = X.slice(splitIndex);
+    const y_test = y.slice(splitIndex);
+
+    // Evaluar
+    const evaluation = await linearRegressionService.evaluateModel(
+      X_test.map((x, i) => {
+        const row = {};
+        features.forEach((feat, j) => {
+          row[feat] = x[j];
+        });
+        row[targetColumn] = y_test[i];
+        return row;
+      })
+    );
+
+    res.json({
+      success: true,
+      evaluation,
+      testSize: X_test.length,
+      meetsR2Threshold: evaluation.r2 >= 0.7,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error evaluando modelo', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE PREDICCIÓN DE HORARIOS PICO ====================
+
+// Importar modelo predictivo de horarios pico
+const PeakHoursPredictiveModel = require('./ml/peak_hours_predictive_model');
+
+// Instancia del modelo predictivo
+const peakHoursPredictiveModel = new PeakHoursPredictiveModel(Asistencia);
+
+// Entrenar modelo predictivo de horarios pico
+app.post('/ml/prediction/peak-hours/train', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      testSize = 0.2,
+      optimizeParams = true,
+      cvFolds = 5,
+      targetAccuracy = 0.8
+    } = req.body;
+
+    res.json({
+      success: true,
+      message: 'Entrenamiento de modelo predictivo iniciado. Verifique el endpoint /ml/prediction/peak-hours/metrics para el progreso.',
+      timestamp: new Date()
+    });
+
+    // Ejecutar en segundo plano
+    peakHoursPredictiveModel.trainPredictiveModels({
+      months,
+      testSize,
+      optimizeParams,
+      cvFolds,
+      targetAccuracy
+    }).then(result => {
+      console.log('✅ Modelo predictivo entrenado:', result);
+    }).catch(error => {
+      console.error('❌ Error en entrenamiento:', error);
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando entrenamiento del modelo predictivo', 
+      details: err.message 
+    });
+  }
+});
+
+// Predecir horarios pico para las próximas 24 horas
+app.get('/ml/prediction/peak-hours/next-24h', async (req, res) => {
+  try {
+    const { targetDate } = req.query;
+    
+    const prediction = await peakHoursPredictiveModel.predictNext24Hours(
+      targetDate || null
+    );
+
+    res.json({
+      success: true,
+      prediction,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error prediciendo próximas 24 horas', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas del modelo predictivo
+app.get('/ml/prediction/peak-hours/metrics', async (req, res) => {
+  try {
+    const metrics = await peakHoursPredictiveModel.getModelMetrics();
+
+    res.json({
+      success: true,
+      metrics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas del modelo predictivo', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar precisión del modelo
+app.post('/ml/prediction/peak-hours/validate', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      testSize = 0.2,
+      targetAccuracy = 0.8
+    } = req.body;
+
+    const validation = await peakHoursPredictiveModel.validateAccuracy({
+      months,
+      testSize,
+      targetAccuracy
+    });
+
+    res.json({
+      success: true,
+      validation,
+      meetsAccuracyThreshold: validation.overall.meetsThreshold,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando precisión del modelo', 
+      details: err.message 
+    });
+  }
+});
+
+// Predecir horarios pico para una fecha específica
+app.get('/ml/prediction/peak-hours/date', async (req, res) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({ 
+        error: 'Parámetro date es requerido (formato: YYYY-MM-DD)' 
+      });
+    }
+
+    const prediction = await peakHoursPredictiveModel.predictNext24Hours(date);
+
+    res.json({
+      success: true,
+      prediction,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error prediciendo para fecha específica', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener resumen de predicción para dashboard
+app.get('/ml/prediction/peak-hours/summary', async (req, res) => {
+  try {
+    const prediction = await peakHoursPredictiveModel.predictNext24Hours();
+    const metrics = await peakHoursPredictiveModel.getModelMetrics();
+
+    res.json({
+      success: true,
+      summary: {
+        next24Hours: prediction.summary,
+        peakHours: prediction.peakHours,
+        modelMetrics: metrics,
+        timestamp: new Date()
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo resumen de predicción', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE ETL PARA ML ====================
+
+// Importar servicios ETL
+const MLETLService = require('./ml/ml_etl_service');
+const HistoricalDataETL = require('./ml/historical_data_etl');
+const DataCleaningService = require('./ml/data_cleaning_service');
+const DataQualityValidator = require('./ml/data_quality_validator');
+const MLDataStructure = require('./ml/ml_data_structure');
+
+// Instancias de servicios
+const mlETLService = new MLETLService(Asistencia);
+const historicalETL = new HistoricalDataETL(Asistencia);
+const cleaningService = new DataCleaningService();
+const qualityValidator = new DataQualityValidator();
+const mlStructure = new MLDataStructure();
+
+// Ejecutar pipeline ETL completo para ML
+app.post('/ml/etl/pipeline', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      startDate = null,
+      endDate = null,
+      cleanData = true,
+      validateData = true,
+      aggregateByHour = true,
+      normalizeStructure = true
+    } = req.body;
+
+    res.json({
+      success: true,
+      message: 'Pipeline ETL iniciado. El proceso puede tardar varios minutos.',
+      timestamp: new Date()
+    });
+
+    // Ejecutar en segundo plano
+    mlETLService.executeMLETLPipeline({
+      months,
+      startDate,
+      endDate,
+      cleanData,
+      validateData,
+      aggregateByHour,
+      normalizeStructure
+    }).then(result => {
+      console.log('✅ Pipeline ETL completado:', result);
+    }).catch(error => {
+      console.error('❌ Error en pipeline ETL:', error);
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando pipeline ETL', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar ETL básico (extracción, transformación, carga)
+app.post('/ml/etl/basic', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      startDate = null,
+      endDate = null,
+      cleanData = true,
+      validateData = true,
+      aggregateByHour = true
+    } = req.body;
+
+    const result = await historicalETL.executeETLPipeline({
+      months,
+      startDate,
+      endDate,
+      cleanData,
+      validateData,
+      aggregateByHour
+    });
+
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error ejecutando ETL básico', 
+      details: err.message 
+    });
+  }
+});
+
+// Limpiar datos existentes
+app.post('/ml/etl/clean', async (req, res) => {
+  try {
+    const { dataPath, strategy = 'impute' } = req.body;
+
+    if (!dataPath) {
+      return res.status(400).json({ 
+        error: 'dataPath es requerido' 
+      });
+    }
+
+    const fs = require('fs').promises;
+    const content = await fs.readFile(dataPath, 'utf8');
+    const data = JSON.parse(content);
+
+    const result = await cleaningService.cleanDataset(data, {
+      removeOutliers: true,
+      handleMissing: true,
+      missingStrategy: strategy,
+      normalize: false,
+      encodeCategorical: false,
+      validateAfterCleaning: true
+    });
+
+    res.json({
+      success: true,
+      cleanedData: result.cleanedData,
+      report: result.report,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error limpiando datos', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar calidad de datos
+app.post('/ml/etl/validate', async (req, res) => {
+  try {
+    const { dataPath } = req.body;
+
+    if (!dataPath) {
+      return res.status(400).json({ 
+        error: 'dataPath es requerido' 
+      });
+    }
+
+    const validation = await mlETLService.validateExistingDataset(dataPath);
+
+    res.json({
+      success: true,
+      validation,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando datos', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estadísticas del dataset
+app.get('/ml/etl/statistics', async (req, res) => {
+  try {
+    const { dataPath } = req.query;
+
+    const statistics = await mlETLService.getDatasetStatistics(dataPath || null);
+
+    res.json({
+      success: true,
+      statistics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estadísticas', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estructura ML definida
+app.get('/ml/etl/structure', async (req, res) => {
+  try {
+    const structure = mlETLService.getMLStructure();
+
+    res.json({
+      success: true,
+      structure,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estructura ML', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar estructura de datos
+app.post('/ml/etl/validate-structure', async (req, res) => {
+  try {
+    const { data } = req.body;
+
+    if (!data || !Array.isArray(data)) {
+      return res.status(400).json({ 
+        error: 'data debe ser un array' 
+      });
+    }
+
+    const validation = mlStructure.validateStructure(data);
+
+    res.json({
+      success: true,
+      validation,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando estructura', 
+      details: err.message 
+    });
+  }
+});
+
+// Generar reporte de calidad
+app.post('/ml/etl/quality-report', async (req, res) => {
+  try {
+    const { dataPath, data } = req.body;
+
+    let dataset;
+
+    if (dataPath) {
+      const fs = require('fs').promises;
+      const content = await fs.readFile(dataPath, 'utf8');
+      dataset = JSON.parse(content);
+    } else if (data && Array.isArray(data)) {
+      dataset = data;
+    } else {
+      return res.status(400).json({ 
+        error: 'dataPath o data es requerido' 
+      });
+    }
+
+    const report = await mlETLService.generateQualityReport(dataset);
+
+    res.json({
+      success: true,
+      report,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando reporte de calidad', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE ACTUALIZACIÓN AUTOMÁTICA SEMANAL ====================
+
+// Importar servicios de actualización automática
+const AutomaticUpdateScheduler = require('./ml/automatic_update_scheduler');
+const WeeklyModelUpdateService = require('./ml/weekly_model_update_service');
+const ModelDriftMonitor = require('./ml/model_drift_monitor');
+
+// Instancias de servicios
+const updateScheduler = new AutomaticUpdateScheduler(Asistencia);
+const weeklyUpdateService = new WeeklyModelUpdateService(Asistencia);
+const driftMonitor = new ModelDriftMonitor();
+
+// Configurar job automático semanal
+app.post('/ml/update/schedule', async (req, res) => {
+  try {
+    const {
+      dayOfWeek = 0,
+      hour = 2,
+      interval = 7,
+      enabled = true
+    } = req.body;
+
+    const result = updateScheduler.scheduleWeeklyUpdate({
+      dayOfWeek,
+      hour,
+      interval,
+      enabled
+    });
+
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error configurando schedule', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estado del scheduler
+app.get('/ml/update/schedule/status', async (req, res) => {
+  try {
+    const status = updateScheduler.getSchedulerStatus();
+
+    res.json({
+      success: true,
+      status,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estado del scheduler', 
+      details: err.message 
+    });
+  }
+});
+
+// Detener scheduler
+app.post('/ml/update/schedule/stop', async (req, res) => {
+  try {
+    const result = updateScheduler.stopScheduler();
+
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error deteniendo scheduler', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar actualización semanal manualmente
+app.post('/ml/update/weekly', async (req, res) => {
+  try {
+    const {
+      incremental = true,
+      validatePerformance = true,
+      checkDrift = true,
+      targetR2 = 0.7
+    } = req.body;
+
+    res.json({
+      success: true,
+      message: 'Actualización semanal iniciada. El proceso puede tardar varios minutos.',
+      timestamp: new Date()
+    });
+
+    // Ejecutar en segundo plano
+    updateScheduler.executeManualUpdate({
+      incremental,
+      validatePerformance,
+      checkDrift,
+      targetR2
+    }).then(result => {
+      console.log('✅ Actualización semanal completada:', result);
+    }).catch(error => {
+      console.error('❌ Error en actualización:', error);
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando actualización semanal', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener historial de actualizaciones
+app.get('/ml/update/history', async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+
+    const history = await weeklyUpdateService.getUpdateHistory(parseInt(limit));
+
+    res.json({
+      success: true,
+      history,
+      count: history.length,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo historial', 
+      details: err.message 
+    });
+  }
+});
+
+// Monitorear drift del modelo
+app.get('/ml/update/drift', async (req, res) => {
+  try {
+    const driftResult = await updateScheduler.monitorModelDrift();
+
+    res.json({
+      success: true,
+      drift: driftResult,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error monitoreando drift', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar performance del modelo actualizado
+app.post('/ml/update/validate-performance', async (req, res) => {
+  try {
+    const { days = 7 } = req.body;
+
+    const currentModel = await weeklyUpdateService.loadCurrentModel();
+    if (!currentModel) {
+      return res.status(404).json({ 
+        error: 'No hay modelo actual para validar' 
+      });
+    }
+
+    const newData = await weeklyUpdateService.collectNewData(days);
+    const performanceValidation = await weeklyUpdateService.validatePerformance(
+      { model: currentModel.model.save(), features: currentModel.modelData.features, targetColumn: currentModel.modelData.targetColumn },
+      currentModel,
+      newData
+    );
+
+    res.json({
+      success: true,
+      validation: performanceValidation,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando performance', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener configuración de actualización
+app.get('/ml/update/config', async (req, res) => {
+  try {
+    const config = weeklyUpdateService.getScheduleConfig();
+
+    res.json({
+      success: true,
+      config,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo configuración', 
+      details: err.message 
+    });
+  }
+});
+
 // Endpoint de salud del sistema
 app.get('/health', async (req, res) => {
   try {
@@ -1164,10 +2999,10 @@ app.get('/health', async (req, res) => {
     
     // Contar registros en colecciones principales
     const stats = {
-      usuarios: await Usuario.countDocuments(),
+      usuarios: await User.countDocuments(),
       alumnos: await Alumno.countDocuments(),
       asistencias: await Asistencia.countDocuments(),
-      sesiones_activas: await SesionGuardia.countDocuments({ activa: true })
+      sesiones_activas: await SessionGuard.countDocuments({ is_active: true })
     };
 
     res.json({
@@ -1408,6 +3243,6 @@ app.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
   console.log(`✅ Backend completo con ${Object.keys(require('./package.json').dependencies).length} dependencias`);
   console.log(`✅ MongoDB conectado a base de datos: ASISTENCIA`);
-  console.log(`✅ Endpoints disponibles: 25+ rutas REST`);
   console.log(`✅ Dashboard disponible en http://localhost:${PORT}/dashboard`);
+  console.log(`✅ Endpoints disponibles: 30+ rutas REST (incluye ML)`);
 });

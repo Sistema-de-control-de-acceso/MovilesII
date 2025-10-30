@@ -5,6 +5,44 @@ import '../models/asistencia_model.dart';
 import '../config/api_config.dart';
 
 class GuardReportsService {
+  // Obtener ranking de estudiantes más activos
+  Future<List<AlumnoModel>> getActiveStudentsRanking(
+    DateTime fechaInicio,
+    DateTime fechaFin, {
+    int limit = 10,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/reportes/estudiantes/ranking?'
+            'fecha_inicio=${fechaInicio.toIso8601String()}&'
+            'fecha_fin=${fechaFin.toIso8601String()}&'
+            'limit=$limit'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        List<dynamic> data = json.decode(response.body);
+        return data.map((json) => AlumnoModel(
+          id: json['id'] ?? '',
+          identificacion: json['identificacion'] ?? '',
+          nombre: json['nombre'] ?? '',
+          apellido: json['apellido'] ?? '',
+          dni: json['dni'] ?? '',
+          codigoUniversitario: json['codigoUniversitario'] ?? '',
+          escuelaProfesional: json['escuelaProfesional'] ?? '',
+          facultad: json['facultad'] ?? '',
+          siglasEscuela: json['siglasEscuela'] ?? '',
+          siglasFacultad: json['siglasFacultad'] ?? '',
+          estado: json['estado'] ?? '',
+          accesos: json['accesos'] ?? 0,
+        )).toList();
+      } else {
+        throw Exception('Error al obtener ranking de estudiantes: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
+    }
+  }
   static final GuardReportsService _instance = GuardReportsService._internal();
   factory GuardReportsService() => _instance;
   GuardReportsService._internal();

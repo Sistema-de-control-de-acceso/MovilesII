@@ -23,7 +23,20 @@ class AlumnoModel {
     required this.siglasEscuela,
     required this.siglasFacultad,
     required this.estado,
-  });
+    final int? accesos; // Adding accesos field
+    AlumnoModel({
+      required this.id,
+      required this.identificacion,
+      required this.nombre,
+      required this.apellido,
+      required this.dni,
+      required this.codigoUniversitario,
+      required this.escuelaProfesional,
+      required this.facultad,
+      required this.siglasEscuela,
+      required this.siglasFacultad,
+      required this.estado,
+      this.accesos, // Include accesos in the constructor
 
   factory AlumnoModel.fromJson(Map<String, dynamic> json) {
     return AlumnoModel(
