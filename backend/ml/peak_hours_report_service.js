@@ -6,12 +6,14 @@
 const PeakHoursPredictor = require('./peak_hours_predictor');
 const MLRealComparison = require('./ml_real_comparison');
 const AdjustmentSuggestionsGenerator = require('./adjustment_suggestions_generator');
+const AdvancedMetricsAnalyzer = require('./advanced_metrics_analyzer');
 
 class PeakHoursReportService {
   constructor(AsistenciaModel) {
-    this.predictor = new PeakHoursPredictor();
+    this.predictor = new PeakHoursPredictor(null, AsistenciaModel);
     this.comparison = new MLRealComparison(AsistenciaModel);
     this.suggestionsGenerator = new AdjustmentSuggestionsGenerator();
+    this.metricsAnalyzer = new AdvancedMetricsAnalyzer();
   }
 
   /**
@@ -104,7 +106,7 @@ class PeakHoursReportService {
   }
 
   /**
-   * Calcula métricas detalladas por horario
+   * Calcula métricas detalladas por horario (mejorado con análisis estadístico avanzado)
    */
   calculateHourlyMetrics(comparison) {
     const hourlyStats = {};
@@ -121,7 +123,9 @@ class PeakHoursReportService {
             count: 0,
             maxError: 0,
             minError: Infinity,
-            confidenceSum: 0
+            confidenceSum: 0,
+            predictedValues: [],
+            realValues: []
           };
         }
 
@@ -134,19 +138,25 @@ class PeakHoursReportService {
         stats.count++;
         stats.maxError = Math.max(stats.maxError, hour.error);
         stats.minError = Math.min(stats.minError, hour.error);
+        stats.predictedValues.push(hour.predicted);
+        stats.realValues.push(hour.real);
       });
     });
 
-    // Calcular promedios y métricas
+    // Calcular promedios y métricas básicas
     const metrics = Object.values(hourlyStats).map(stats => {
       const avgAccuracy = stats.count > 0 ? stats.accuracySum / stats.count : 0;
       const avgError = stats.count > 0 ? stats.totalError / stats.count : 0;
       const avgConfidence = stats.count > 0 ? stats.confidenceSum / stats.count : 0;
       const avgPredicted = stats.count > 0 ? stats.totalPredicted / stats.count : 0;
       const avgReal = stats.count > 0 ? stats.totalReal / stats.count : 0;
-      const bias = avgPredicted - avgReal; // Sesgo del modelo
-      const mae = avgError; // Mean Absolute Error
-      const rmse = Math.sqrt(stats.totalError / stats.count); // Root Mean Square Error aproximado
+      const bias = avgPredicted - avgReal;
+
+      // Calcular métricas estadísticas avanzadas
+      const advancedMetrics = this.metricsAnalyzer.calculateAdvancedMetrics(
+        stats.predictedValues,
+        stats.realValues
+      );
 
       return {
         hora: stats.hora,
@@ -158,10 +168,19 @@ class PeakHoursReportService {
         maxError: stats.maxError,
         minError: stats.minError === Infinity ? 0 : stats.minError,
         bias: parseFloat(bias.toFixed(2)),
-        mae: parseFloat(mae.toFixed(2)),
-        rmse: parseFloat(rmse.toFixed(2)),
+        mae: advancedMetrics.basicMetrics.mae,
+        rmse: advancedMetrics.basicMetrics.rmse,
+        mape: advancedMetrics.basicMetrics.mape,
+        r2: advancedMetrics.basicMetrics.r2,
+        correlation: advancedMetrics.basicMetrics.correlation,
         averageConfidence: parseFloat(avgConfidence.toFixed(2)),
-        performance: this.categorizePerformance(avgAccuracy)
+        performance: this.categorizePerformance(avgAccuracy),
+        advancedMetrics: {
+          errorDistribution: advancedMetrics.errorDistribution,
+          outliers: advancedMetrics.outliers,
+          confidenceIntervals: advancedMetrics.confidenceIntervals,
+          reliability: advancedMetrics.reliability
+        }
       };
     });
 
@@ -176,9 +195,18 @@ class PeakHoursReportService {
         averageAccuracy: parseFloat((
           metrics.reduce((sum, m) => sum + m.averageAccuracy, 0) / metrics.length
         ).toFixed(2)),
+        averageR2: parseFloat((
+          metrics.reduce((sum, m) => sum + m.r2, 0) / metrics.length
+        ).toFixed(3)),
+        averageCorrelation: parseFloat((
+          metrics.reduce((sum, m) => sum + m.correlation, 0) / metrics.length
+        ).toFixed(3)),
         peakHoursAccuracy: this.calculatePeakHoursAccuracy(metrics),
         modelBias: parseFloat((
           metrics.reduce((sum, m) => sum + m.bias, 0) / metrics.length
+        ).toFixed(2)),
+        overallReliability: parseFloat((
+          metrics.reduce((sum, m) => sum + m.advancedMetrics.reliability, 0) / metrics.length
         ).toFixed(2))
       }
     };

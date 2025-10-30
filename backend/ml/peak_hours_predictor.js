@@ -5,11 +5,13 @@
 
 const fs = require('fs').promises;
 const path = require('path');
+const HistoricalTrendAnalyzer = require('./historical_trend_analyzer');
 
 class PeakHoursPredictor {
-  constructor(modelPath = null) {
+  constructor(modelPath = null, AsistenciaModel = null) {
     this.model = null;
     this.modelPath = modelPath;
+    this.trendAnalyzer = AsistenciaModel ? new HistoricalTrendAnalyzer(AsistenciaModel) : null;
     this.features = [
       'hora',
       'minuto',
@@ -26,6 +28,7 @@ class PeakHoursPredictor {
       'puerta',
       'guardia_id'
     ];
+    this.historicalBaseline = null;
   }
 
   /**
@@ -127,18 +130,57 @@ class PeakHoursPredictor {
   }
 
   /**
-   * Predice actividad para una hora específica
+   * Predice actividad para una hora específica (mejorado con tendencias)
    */
   async predictForHour(date, hour) {
     const features = this.extractFeaturesForHour(date, hour);
     const prediction = this.predictWithModel(features);
     
-    // Estimar cantidad de accesos basándose en probabilidad
-    const estimatedCount = this.estimateAccessCount(prediction.probability, date, hour);
+    // Obtener análisis de tendencias históricas si está disponible
+    let trendAdjustment = 1.0;
+    let historicalBaseline = null;
+    let confidenceBoost = 0;
+
+    if (this.trendAnalyzer) {
+      try {
+        const trends = await this.trendAnalyzer.analyzeHistoricalTrends(date, hour);
+        historicalBaseline = trends.averageCount;
+        
+        // Ajustar predicción basándose en tendencias
+        if (trends.trend === 'increasing') {
+          trendAdjustment = 1.15; // 15% más
+        } else if (trends.trend === 'decreasing') {
+          trendAdjustment = 0.85; // 15% menos
+        }
+
+        // Aumentar confianza si hay datos históricos sólidos
+        confidenceBoost = trends.confidence * 0.3;
+        
+        // Ajustar según probabilidad de horario pico
+        if (trends.peakLikelihood > 0.5) {
+          trendAdjustment *= 1.1;
+        }
+      } catch (error) {
+        console.warn(`Error obteniendo tendencias históricas: ${error.message}`);
+      }
+    }
+    
+    // Estimar cantidad de accesos (mejorado)
+    const estimatedCount = this.estimateAccessCountImproved(
+      prediction.probability, 
+      date, 
+      hour,
+      historicalBaseline,
+      trendAdjustment
+    );
     
     return {
       ...prediction,
-      count: estimatedCount
+      count: estimatedCount,
+      confidence: Math.min(1.0, prediction.confidence + confidenceBoost),
+      historicalBaseline,
+      trendAdjustment,
+      hasHistoricalData: historicalBaseline !== null
     };
   }
 
@@ -231,7 +273,48 @@ class PeakHoursPredictor {
   }
 
   /**
-   * Estima cantidad de accesos basándose en probabilidad y contexto
+   * Estima cantidad de accesos mejorado (usa datos históricos cuando están disponibles)
+   */
+  estimateAccessCountImproved(probability, date, hour, historicalBaseline = null, trendAdjustment = 1.0) {
+    let baseCount;
+
+    // Si hay baseline histórico, usarlo como base más confiable
+    if (historicalBaseline !== null && historicalBaseline > 0) {
+      baseCount = historicalBaseline;
+      
+      // Ajustar según probabilidad del modelo ML
+      const mlAdjustment = (probability - 0.5) * 0.4; // ±20% basado en probabilidad
+      baseCount *= (1 + mlAdjustment);
+    } else {
+      // Fallback al método original
+      baseCount = this.estimateAccessCount(probability, date, hour);
+    }
+
+    // Aplicar ajuste de tendencia
+    baseCount *= trendAdjustment;
+
+    // Factores de ajuste contextuales
+    const diaSemana = date.getDay();
+    const isWeekend = diaSemana === 0 || diaSemana === 6;
+    const isPeakHour = (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19);
+    
+    if (isWeekend) {
+      baseCount *= 0.3;
+    }
+    
+    if (isPeakHour && !isWeekend) {
+      baseCount *= 1.2; // Boost adicional para horarios pico en días laborables
+    }
+    
+    // Ajuste por hora del día (curva de actividad normal)
+    const hourFactor = this.getHourFactor(hour);
+    baseCount *= hourFactor;
+    
+    return Math.round(Math.max(0, baseCount));
+  }
+
+  /**
+   * Estima cantidad de accesos basándose en probabilidad y contexto (método original)
    */
   estimateAccessCount(probability, date, hour) {
     // Factores de ajuste
@@ -275,30 +358,68 @@ class PeakHoursPredictor {
   }
 
   /**
-   * Identifica horarios pico (top 3 horas)
+   * Identifica horarios pico mejorado (considera múltiples factores)
    */
   identifyPeakHours(hourPredictions) {
+    // Ordenar por cantidad predicha
     const sorted = [...hourPredictions].sort((a, b) => 
       b.predictedCount - a.predictedCount
     );
     
-    return sorted.slice(0, 3).map(p => ({
+    // Identificar top 3
+    const top3 = sorted.slice(0, 3);
+    
+    // Calcular score combinado (cantidad + confianza + datos históricos)
+    const scored = top3.map(p => ({
       hora: p.hora,
       predictedCount: p.predictedCount,
       probability: p.predictedProbability,
-      confidence: p.confidence
-    }));
+      confidence: p.confidence,
+      score: this.calculatePeakScore(p),
+      hasHistoricalData: p.hasHistoricalData || false
+    })).sort((a, b) => b.score - a.score);
+    
+    return scored.slice(0, 3);
   }
 
   /**
-   * Genera resumen de predicciones
+   * Calcula score para identificar horarios pico
+   */
+  calculatePeakScore(prediction) {
+    let score = prediction.predictedCount;
+    
+    // Boost por confianza alta
+    score *= (1 + prediction.confidence * 0.2);
+    
+    // Boost si tiene datos históricos
+    if (prediction.hasHistoricalData) {
+      score *= 1.15;
+    }
+    
+    // Boost por probabilidad alta del modelo
+    score *= (1 + prediction.predictedProbability * 0.1);
+    
+    return score;
+  }
+
+  /**
+   * Genera resumen mejorado de predicciones
    */
   generateSummary(predictions) {
     const allPeakHours = [];
+    let totalHistoricalData = 0;
+    let totalWithHistoricalData = 0;
+    
     predictions.forEach(p => {
       p.peakHours.forEach(ph => {
         allPeakHours.push({ ...ph, fecha: p.fecha });
+        if (ph.hasHistoricalData) {
+          totalHistoricalData++;
+        }
       });
+      if (p.predictions.some(pr => pr.hasHistoricalData)) {
+        totalWithHistoricalData++;
+      }
     });
 
     // Horarios más frecuentes como pico
@@ -313,8 +434,14 @@ class PeakHoursPredictor {
       .map(([hora, count]) => ({
         hora: parseInt(hora),
         frequency: count,
-        percentage: (count / predictions.length * 100).toFixed(1)
+        percentage: (count / predictions.length * 100).toFixed(1),
+        avgScore: this.calculateAvgScoreForHour(allPeakHours, parseInt(hora))
       }));
+
+    // Calcular confianza promedio
+    const avgConfidence = allPeakHours.length > 0
+      ? allPeakHours.reduce((sum, ph) => sum + ph.confidence, 0) / allPeakHours.length
+      : 0;
 
     return {
       totalDays: predictions.length,
@@ -322,11 +449,32 @@ class PeakHoursPredictor {
         predictions.reduce((sum, p) => sum + p.totalPredicted, 0) / predictions.length
       ).toFixed(0),
       topPeakHours,
+      averageConfidence: parseFloat(avgConfidence.toFixed(2)),
+      historicalDataCoverage: {
+        percentage: (totalWithHistoricalData / predictions.length * 100).toFixed(1),
+        daysWithData: totalWithHistoricalData,
+        totalDays: predictions.length
+      },
       peakHoursByDay: predictions.map(p => ({
         fecha: p.fecha,
-        peakHours: p.peakHours.map(ph => ph.hora)
+        peakHours: p.peakHours.map(ph => ({
+          hora: ph.hora,
+          score: ph.score || ph.predictedCount,
+          confidence: ph.confidence
+        }))
       }))
     };
+  }
+
+  /**
+   * Calcula score promedio para una hora específica
+   */
+  calculateAvgScoreForHour(allPeakHours, hora) {
+    const hours = allPeakHours.filter(ph => ph.hora === hora);
+    if (hours.length === 0) return 0;
+    
+    const avgScore = hours.reduce((sum, ph) => sum + (ph.score || ph.predictedCount), 0) / hours.length;
+    return parseFloat(avgScore.toFixed(2));
   }
 
   /**
