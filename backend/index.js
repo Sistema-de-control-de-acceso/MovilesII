@@ -2369,6 +2369,170 @@ app.post('/ml/regression/evaluate', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE PREDICCIÓN DE HORARIOS PICO ====================
+
+// Importar modelo predictivo de horarios pico
+const PeakHoursPredictiveModel = require('./ml/peak_hours_predictive_model');
+
+// Instancia del modelo predictivo
+const peakHoursPredictiveModel = new PeakHoursPredictiveModel(Asistencia);
+
+// Entrenar modelo predictivo de horarios pico
+app.post('/ml/prediction/peak-hours/train', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      testSize = 0.2,
+      optimizeParams = true,
+      cvFolds = 5,
+      targetAccuracy = 0.8
+    } = req.body;
+
+    res.json({
+      success: true,
+      message: 'Entrenamiento de modelo predictivo iniciado. Verifique el endpoint /ml/prediction/peak-hours/metrics para el progreso.',
+      timestamp: new Date()
+    });
+
+    // Ejecutar en segundo plano
+    peakHoursPredictiveModel.trainPredictiveModels({
+      months,
+      testSize,
+      optimizeParams,
+      cvFolds,
+      targetAccuracy
+    }).then(result => {
+      console.log('✅ Modelo predictivo entrenado:', result);
+    }).catch(error => {
+      console.error('❌ Error en entrenamiento:', error);
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando entrenamiento del modelo predictivo', 
+      details: err.message 
+    });
+  }
+});
+
+// Predecir horarios pico para las próximas 24 horas
+app.get('/ml/prediction/peak-hours/next-24h', async (req, res) => {
+  try {
+    const { targetDate } = req.query;
+    
+    const prediction = await peakHoursPredictiveModel.predictNext24Hours(
+      targetDate || null
+    );
+
+    res.json({
+      success: true,
+      prediction,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error prediciendo próximas 24 horas', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas del modelo predictivo
+app.get('/ml/prediction/peak-hours/metrics', async (req, res) => {
+  try {
+    const metrics = await peakHoursPredictiveModel.getModelMetrics();
+
+    res.json({
+      success: true,
+      metrics,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas del modelo predictivo', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar precisión del modelo
+app.post('/ml/prediction/peak-hours/validate', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      testSize = 0.2,
+      targetAccuracy = 0.8
+    } = req.body;
+
+    const validation = await peakHoursPredictiveModel.validateAccuracy({
+      months,
+      testSize,
+      targetAccuracy
+    });
+
+    res.json({
+      success: true,
+      validation,
+      meetsAccuracyThreshold: validation.overall.meetsThreshold,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando precisión del modelo', 
+      details: err.message 
+    });
+  }
+});
+
+// Predecir horarios pico para una fecha específica
+app.get('/ml/prediction/peak-hours/date', async (req, res) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({ 
+        error: 'Parámetro date es requerido (formato: YYYY-MM-DD)' 
+      });
+    }
+
+    const prediction = await peakHoursPredictiveModel.predictNext24Hours(date);
+
+    res.json({
+      success: true,
+      prediction,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error prediciendo para fecha específica', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener resumen de predicción para dashboard
+app.get('/ml/prediction/peak-hours/summary', async (req, res) => {
+  try {
+    const prediction = await peakHoursPredictiveModel.predictNext24Hours();
+    const metrics = await peakHoursPredictiveModel.getModelMetrics();
+
+    res.json({
+      success: true,
+      summary: {
+        next24Hours: prediction.summary,
+        peakHours: prediction.peakHours,
+        modelMetrics: metrics,
+        timestamp: new Date()
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo resumen de predicción', 
+      details: err.message 
+    });
+  }
+});
+
 // Endpoint de salud del sistema
 app.get('/health', async (req, res) => {
   try {
