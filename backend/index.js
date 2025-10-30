@@ -2787,6 +2787,209 @@ app.post('/ml/etl/quality-report', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE ACTUALIZACIÓN AUTOMÁTICA SEMANAL ====================
+
+// Importar servicios de actualización automática
+const AutomaticUpdateScheduler = require('./ml/automatic_update_scheduler');
+const WeeklyModelUpdateService = require('./ml/weekly_model_update_service');
+const ModelDriftMonitor = require('./ml/model_drift_monitor');
+
+// Instancias de servicios
+const updateScheduler = new AutomaticUpdateScheduler(Asistencia);
+const weeklyUpdateService = new WeeklyModelUpdateService(Asistencia);
+const driftMonitor = new ModelDriftMonitor();
+
+// Configurar job automático semanal
+app.post('/ml/update/schedule', async (req, res) => {
+  try {
+    const {
+      dayOfWeek = 0,
+      hour = 2,
+      interval = 7,
+      enabled = true
+    } = req.body;
+
+    const result = updateScheduler.scheduleWeeklyUpdate({
+      dayOfWeek,
+      hour,
+      interval,
+      enabled
+    });
+
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error configurando schedule', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estado del scheduler
+app.get('/ml/update/schedule/status', async (req, res) => {
+  try {
+    const status = updateScheduler.getSchedulerStatus();
+
+    res.json({
+      success: true,
+      status,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estado del scheduler', 
+      details: err.message 
+    });
+  }
+});
+
+// Detener scheduler
+app.post('/ml/update/schedule/stop', async (req, res) => {
+  try {
+    const result = updateScheduler.stopScheduler();
+
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error deteniendo scheduler', 
+      details: err.message 
+    });
+  }
+});
+
+// Ejecutar actualización semanal manualmente
+app.post('/ml/update/weekly', async (req, res) => {
+  try {
+    const {
+      incremental = true,
+      validatePerformance = true,
+      checkDrift = true,
+      targetR2 = 0.7
+    } = req.body;
+
+    res.json({
+      success: true,
+      message: 'Actualización semanal iniciada. El proceso puede tardar varios minutos.',
+      timestamp: new Date()
+    });
+
+    // Ejecutar en segundo plano
+    updateScheduler.executeManualUpdate({
+      incremental,
+      validatePerformance,
+      checkDrift,
+      targetR2
+    }).then(result => {
+      console.log('✅ Actualización semanal completada:', result);
+    }).catch(error => {
+      console.error('❌ Error en actualización:', error);
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error iniciando actualización semanal', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener historial de actualizaciones
+app.get('/ml/update/history', async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+
+    const history = await weeklyUpdateService.getUpdateHistory(parseInt(limit));
+
+    res.json({
+      success: true,
+      history,
+      count: history.length,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo historial', 
+      details: err.message 
+    });
+  }
+});
+
+// Monitorear drift del modelo
+app.get('/ml/update/drift', async (req, res) => {
+  try {
+    const driftResult = await updateScheduler.monitorModelDrift();
+
+    res.json({
+      success: true,
+      drift: driftResult,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error monitoreando drift', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar performance del modelo actualizado
+app.post('/ml/update/validate-performance', async (req, res) => {
+  try {
+    const { days = 7 } = req.body;
+
+    const currentModel = await weeklyUpdateService.loadCurrentModel();
+    if (!currentModel) {
+      return res.status(404).json({ 
+        error: 'No hay modelo actual para validar' 
+      });
+    }
+
+    const newData = await weeklyUpdateService.collectNewData(days);
+    const performanceValidation = await weeklyUpdateService.validatePerformance(
+      { model: currentModel.model.save(), features: currentModel.modelData.features, targetColumn: currentModel.modelData.targetColumn },
+      currentModel,
+      newData
+    );
+
+    res.json({
+      success: true,
+      validation: performanceValidation,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando performance', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener configuración de actualización
+app.get('/ml/update/config', async (req, res) => {
+  try {
+    const config = weeklyUpdateService.getScheduleConfig();
+
+    res.json({
+      success: true,
+      config,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo configuración', 
+      details: err.message 
+    });
+  }
+});
+
 // Endpoint de salud del sistema
 app.get('/health', async (req, res) => {
   try {
