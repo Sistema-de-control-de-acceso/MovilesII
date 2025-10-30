@@ -156,9 +156,6 @@ Este proyecto es propiedad de la Universidad.
 - @Angelhc123
 - @KrCrimson
 - @LunaJuarezJuan
-- @CMirianG
-- @CarlosJimenez21
-- @MaryChuraTicona
 
 ## 📞 Contacto
 
