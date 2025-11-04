@@ -284,6 +284,3 @@ class AdvancedMetricsAnalyzer {
     };
   }
 }
-
-module.exports = AdvancedMetricsAnalyzer;
-
