@@ -3518,6 +3518,121 @@ app.get('/dashboard/recent-access', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE ANÁLISIS DE PATRONES DE FLUJO ====================
+
+// Importar servicios de análisis de patrones
+const FlowPatternAnalyzer = require('./ml/flow_pattern_analyzer');
+const TrendVisualizationService = require('./ml/trend_visualization_service');
+
+// Instancias de servicios
+const flowPatternAnalyzer = new FlowPatternAnalyzer(Asistencia);
+const trendVisualizationService = new TrendVisualizationService(Asistencia);
+
+// Analizar patrones de flujo de estudiantes
+app.get('/api/ml/patterns/analyze', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      granularity = 'hour',
+      startDate = null,
+      endDate = null,
+      includeAnomalies = true,
+      includeTrends = true,
+      includeSeasonality = true
+    } = req.query;
+
+    const result = await flowPatternAnalyzer.analyzeFlowPatterns({
+      months: parseInt(months),
+      granularity,
+      startDate: startDate ? new Date(startDate) : null,
+      endDate: endDate ? new Date(endDate) : null,
+      includeAnomalies: includeAnomalies === 'true',
+      includeTrends: includeTrends === 'true',
+      includeSeasonality: includeSeasonality === 'true'
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error analizando patrones de flujo',
+      details: err.message
+    });
+  }
+});
+
+// Generar visualización de tendencias
+app.get('/api/ml/trends/visualize', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      granularity = 'hour',
+      includePatterns = true,
+      includeForecast = false,
+      forecastSteps = 24
+    } = req.query;
+
+    const result = await trendVisualizationService.generateTrendVisualization({
+      months: parseInt(months),
+      granularity,
+      includePatterns: includePatterns === 'true',
+      includeForecast: includeForecast === 'true',
+      forecastSteps: parseInt(forecastSteps)
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error generando visualización de tendencias',
+      details: err.message
+    });
+  }
+});
+
+// Obtener resumen ejecutivo de patrones
+app.get('/api/ml/patterns/summary', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      granularity = 'hour'
+    } = req.query;
+
+    const patterns = await flowPatternAnalyzer.analyzeFlowPatterns({
+      months: parseInt(months),
+      granularity,
+      includeAnomalies: true,
+      includeTrends: true,
+      includeSeasonality: true
+    });
+
+    const timeSeriesData = await trendVisualizationService.timeSeriesService.prepareTimeSeriesData({
+      months: parseInt(months),
+      interval: granularity,
+      metric: 'count'
+    });
+
+    const summary = trendVisualizationService.generateExecutiveSummary(patterns, timeSeriesData);
+
+    res.json({
+      success: true,
+      summary,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error generando resumen de patrones',
+      details: err.message
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
