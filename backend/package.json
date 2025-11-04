@@ -7,7 +7,9 @@
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",
     "express": "^4.18.2",
-    "mongoose": "^6.11.0"
+    "mongoose": "^6.11.0",
+    "simple-statistics": "^7.8.2",
+    "ml-matrix": "^6.10.4"
   },
   "devDependencies": {
     "jest": "^29.7.0",
@@ -29,7 +31,8 @@
     "test:e2e:staging": "cross-env NODE_ENV=staging jest --testPathPattern=e2e --coverage --testTimeout=60000",
     "test:contracts": "cross-env NODE_ENV=test jest --testPathPattern=contracts --coverage",
     "ml:train": "node ml/run_training.js",
-    "ml:validate": "node -e \"require('./ml/dataset_collector'); const collector = new (require('./ml/dataset_collector'))(require('./index').Asistencia); collector.validateDatasetAvailability().then(console.log);\""
+    "ml:validate": "node -e \"require('./ml/dataset_collector'); const collector = new (require('./ml/dataset_collector'))(require('./index').Asistencia); collector.validateDatasetAvailability().then(console.log);\"",
+    "ml:arima": "node ml/run_arima_forecast.js"
   },
   "jest": {
     "testEnvironment": "node",
