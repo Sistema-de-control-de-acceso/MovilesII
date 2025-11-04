@@ -17,8 +17,12 @@ const AsistenciaSchema = new mongoose.Schema({
   autorizacion_manual: Boolean,
   razon_decision: String,
   timestamp_decision: Date,
-  coordenadas: String,
-  descripcion_ubicacion: String,
+  // Punto de control y ubicación
+  punto_control_id: String, // ID del punto de control
+  coordenadas: String, // Coordenadas GPS (formato: "lat,lng" o similar)
+  coordenadas_lat: Number, // Latitud GPS (opcional)
+  coordenadas_lng: Number, // Longitud GPS (opcional)
+  descripcion_ubicacion: String, // Descripción de la ubicación
 }, { collection: 'asistencias', strict: false, _id: false });
 
 module.exports = mongoose.model('asistencias', AsistenciaSchema);
