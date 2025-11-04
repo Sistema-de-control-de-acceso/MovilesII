@@ -3633,6 +3633,129 @@ app.get('/api/ml/patterns/summary', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE CLUSTERING ====================
+
+// Importar servicios de clustering
+const ClusteringService = require('./ml/clustering_service');
+
+// Instancia de servicio
+const clusteringService = new ClusteringService(Asistencia);
+
+// Ejecutar clustering completo
+app.post('/api/ml/clustering/execute', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      features = null,
+      k = null,
+      kRange = [2, 8],
+      normalize = true,
+      includeValidation = true,
+      includeVisualization = true
+    } = req.body;
+
+    const result = await clusteringService.executeClusteringPipeline({
+      months: parseInt(months),
+      features,
+      k: k ? parseInt(k) : null,
+      kRange: Array.isArray(kRange) ? kRange : [2, 8],
+      normalize: normalize !== false,
+      includeValidation: includeValidation !== false,
+      includeVisualization: includeVisualization !== false
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error ejecutando clustering',
+      details: err.message
+    });
+  }
+});
+
+// Determinar número óptimo de clusters
+app.post('/api/ml/clustering/optimal-k', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      features = null,
+      kRange = [2, 8],
+      normalize = true
+    } = req.body;
+
+    const { X } = await clusteringService.prepareData(months, features);
+    
+    const ClusteringValidation = require('./ml/clustering_validation');
+    const validator = new ClusteringValidation();
+    
+    const result = validator.determineOptimalK(X, kRange, normalize);
+
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error determinando número óptimo de clusters',
+      details: err.message
+    });
+  }
+});
+
+// Validar clustering existente
+app.post('/api/ml/clustering/validate', async (req, res) => {
+  try {
+    const {
+      months = 3,
+      features = null,
+      k,
+      normalize = true
+    } = req.body;
+
+    if (!k) {
+      return res.status(400).json({
+        error: 'k es requerido para validación'
+      });
+    }
+
+    const { X } = await clusteringService.prepareData(months, features);
+    
+    const KMeansClustering = require('./ml/kmeans_clustering');
+    const ClusteringValidation = require('./ml/clustering_validation');
+    
+    const kmeans = new KMeansClustering(parseInt(k), {
+      maxIterations: 100,
+      tolerance: 1e-4
+    });
+
+    const fitResult = kmeans.fit(X, normalize);
+    const validator = new ClusteringValidation();
+    const silhouette = validator.calculateSilhouetteScore(X, fitResult.labels);
+
+    res.json({
+      success: true,
+      validation: {
+        silhouette,
+        inertia: fitResult.inertia,
+        nClusters: k,
+        nSamples: X.length,
+        interpretation: silhouette.interpretation
+      },
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error validando clustering',
+      details: err.message
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
