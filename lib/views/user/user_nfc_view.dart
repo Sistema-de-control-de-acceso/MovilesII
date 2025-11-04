@@ -9,6 +9,7 @@ import '../student_verification_view.dart';
 import '../admin/presencia_dashboard_view.dart';
 import '../student_status_view.dart';
 import '../matriculation_verification_view.dart';
+import '../students_on_campus_view.dart';
 
 class UserNfcView extends StatefulWidget {
   @override
@@ -444,6 +445,23 @@ class _UserNfcViewState extends State<UserNfcView> with WidgetsBindingObserver {
             onPressed: () => _mostrarDashboardPresencia(nfcViewModel),
           ),
         ],
+
+        // Botón de Estudiantes en Campus
+        SizedBox(height: 12),
+        CustomButton(
+          text: 'Estudiantes en Campus',
+          icon: Icons.people,
+          width: double.infinity,
+          backgroundColor: Colors.teal,
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => StudentsOnCampusView(),
+              ),
+            );
+          },
+        ),
 
         if (nfcViewModel.scannedAlumno != null ||
             nfcViewModel.errorMessage != null) ...[
