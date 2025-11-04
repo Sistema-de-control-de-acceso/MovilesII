@@ -1,4 +1,4 @@
-// Simple script to generate API documentation for endpoints
+    // Simple script to generate API documentation for endpoints
 // You can customize this to parse your routes and output more details
 
 const fs = require('fs');
