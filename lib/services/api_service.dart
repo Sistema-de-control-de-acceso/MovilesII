@@ -411,8 +411,15 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final ultimoTipo = data['ultimo_tipo'] ?? 'salida';
-        // Si último fue entrada, ahora debería ser salida y viceversa
-        return ultimoTipo == 'entrada' ? 'salida' : 'entrada';
+        final estaDentro = data['esta_dentro'] ?? false;
+        
+        // Si último fue entrada (está dentro), ahora debería ser salida y viceversa
+        // Usar el estado de presencia actual para mayor precisión
+        if (estaDentro || ultimoTipo == 'entrada') {
+          return 'salida';
+        } else {
+          return 'entrada';
+        }
       } else {
         // Si no hay registros previos, asumir entrada
         return 'entrada';
@@ -420,6 +427,52 @@ class ApiService {
     } catch (e) {
       // En caso de error, asumir entrada
       return 'entrada';
+    }
+  }
+
+  // Validar movimiento antes de registrarlo
+  Future<Map<String, dynamic>> validarMovimiento({
+    required String dni,
+    required String tipo,
+    required DateTime fechaHora,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/asistencias/validar-movimiento'),
+        headers: _headers,
+        body: json.encode({
+          'dni': dni,
+          'tipo': tipo,
+          'fecha_hora': fechaHora.toIso8601String(),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        final error = json.decode(response.body);
+        throw Exception(error['error'] ?? 'Error al validar movimiento');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
+    }
+  }
+
+  // Obtener estudiantes actualmente en campus
+  Future<Map<String, dynamic>> obtenerEstudiantesEnCampus() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/asistencias/estudiantes-en-campus'),
+        headers: _headers,
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Error al obtener estudiantes en campus: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
     }
   }
 
