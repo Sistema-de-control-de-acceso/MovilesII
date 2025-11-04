@@ -7,9 +7,11 @@ import '../models/decision_manual_model.dart';
 import '../services/hybrid_api_service.dart';
 import '../services/nfc_service.dart';
 import '../services/autorizacion_service.dart';
+import '../services/api_service.dart';
 
 class NfcViewModel extends ChangeNotifier {
   final HybridApiService _apiService = HybridApiService();
+  final ApiService _apiServiceDirect = ApiService();
   final NfcService _nfcService = NfcService();
   final AutorizacionService _autorizacionService = AutorizacionService();
 
@@ -288,6 +290,37 @@ class NfcViewModel extends ChangeNotifier {
     try {
       final now = DateTime.now();
 
+      // Convertir string a enum TipoMovimiento
+      var tipoMovimiento = TipoMovimiento.fromString(tipoAcceso) ?? TipoMovimiento.entrada;
+
+      // Validar movimiento antes de registrarlo (validación de coherencia)
+      try {
+        final validacion = await _apiServiceDirect.validarMovimiento(
+          dni: estudiante.dni,
+          tipo: tipoAcceso,
+          fechaHora: now,
+        );
+
+        // Si la validación falla y no es manual, ajustar el tipo sugerido
+        if (!validacion['es_valido'] && !validacion['requiere_autorizacion_manual']) {
+          // Si hay un tipo sugerido diferente, usarlo
+          if (validacion['tipo_sugerido'] != null && validacion['tipo_sugerido'] != tipoAcceso) {
+            final tipoSugerido = validacion['tipo_sugerido'] as String;
+            tipoMovimiento = TipoMovimiento.fromString(tipoSugerido) ?? TipoMovimiento.entrada;
+            
+            _setSuccess('Tipo ajustado: ${tipoMovimiento.descripcion}. ${validacion['motivo'] ?? ''}');
+          }
+        } else if (!validacion['es_valido'] && validacion['requiere_autorizacion_manual']) {
+          // Si requiere autorización manual, lanzar error
+          _setError('${validacion['motivo'] ?? 'Movimiento no válido'}');
+          throw Exception(validacion['motivo'] ?? 'Movimiento no válido. Requiere autorización manual.');
+        }
+      } catch (e) {
+        // Si la validación falla por error de conexión, continuar con el registro
+        // pero mostrar advertencia
+        debugPrint('Advertencia: No se pudo validar movimiento: $e');
+      }
+
       final asistencia = AsistenciaModel(
         id: now.millisecondsSinceEpoch.toString(),
         nombre: estudiante.nombre,
@@ -296,7 +329,7 @@ class NfcViewModel extends ChangeNotifier {
         codigoUniversitario: estudiante.codigoUniversitario,
         siglasFacultad: estudiante.siglasFacultad,
         siglasEscuela: estudiante.siglasEscuela,
-        tipo: tipoAcceso,
+        tipo: tipoMovimiento, // Usando enum
         fechaHora: now,
         entradaTipo: 'nfc',
         puerta: _puntoControl ?? 'Desconocida',
@@ -317,12 +350,12 @@ class NfcViewModel extends ChangeNotifier {
       // Actualizar control de presencia (US026-US030)
       await _apiService.actualizarPresencia(
         estudiante.dni,
-        tipoAcceso,
+        tipoMovimiento.toValue(), // Convertir enum a string
         _puntoControl ?? 'Desconocido',
         _guardiaId ?? '',
       );
 
-      _setSuccess('Acceso ${tipoAcceso} registrado correctamente');
+      _setSuccess('Acceso ${tipoMovimiento.descripcion} registrado correctamente');
     } catch (e) {
       _setError('Error al registrar asistencia: $e');
       rethrow;

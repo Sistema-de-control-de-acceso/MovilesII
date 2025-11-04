@@ -5,6 +5,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --coverage --ci --coverageReporters=json --coverageReporters=text --coverageReporters=lcov",
     "ml:train": "node ml/run_training.js",
     "ml:validate": "node -e \"require('./ml/dataset_collector'); const collector = new (require('./ml/dataset_collector'))(require('./index').Asistencia); collector.validateDatasetAvailability().then(console.log);\""
   },
@@ -14,6 +17,44 @@
     "dotenv": "^16.0.0",
     "express": "^4.18.2",
     "mongoose": "^6.11.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@jest/globals": "^29.7.0",
+    "supertest": "^6.3.3",
+    "mongodb-memory-server": "^9.1.3",
+    "uuid": "^9.0.1"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    },
+    "collectCoverageFrom": [
+      "**/*.js",
+      "!**/node_modules/**",
+      "!**/coverage/**",
+      "!**/test/**",
+      "!**/*.config.js",
+      "!index.js"
+    ],
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html",
+      "json"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.js",
+      "**/*.test.js",
+      "**/*.spec.js"
+    ],
+    "setupFilesAfterEnv": ["<rootDir>/test/setup.js"]
   },
   "engines": {
     "node": ">=12.0.0"

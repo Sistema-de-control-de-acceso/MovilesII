@@ -593,18 +593,298 @@ app.post('/asistencias/completa', async (req, res) => {
 });
 
 // Determinar último tipo de acceso para entrada/salida inteligente (US028)
+// Mejorado para usar estado de presencia actual
 app.get('/asistencias/ultimo-acceso/:dni', async (req, res) => {
   try {
     const { dni } = req.params;
+    
+    // Primero verificar estado de presencia actual (más confiable)
+    const presenciaActual = await Presencia.findOne({ estudiante_dni: dni, esta_dentro: true });
+    
+    if (presenciaActual) {
+      // Si está dentro según presencia, el siguiente movimiento debe ser salida
+      res.json({ 
+        ultimo_tipo: 'entrada',
+        esta_dentro: true,
+        hora_entrada: presenciaActual.hora_entrada,
+        punto_entrada: presenciaActual.punto_entrada,
+        fuente: 'presencia'
+      });
+      return;
+    }
+    
+    // Si no hay presencia activa, verificar último movimiento en asistencias
     const ultimaAsistencia = await Asistencia.findOne({ dni }).sort({ fecha_hora: -1 });
     
     if (ultimaAsistencia) {
-      res.json({ ultimo_tipo: ultimaAsistencia.tipo });
+      res.json({ 
+        ultimo_tipo: ultimaAsistencia.tipo,
+        esta_dentro: ultimaAsistencia.tipo === 'entrada',
+        ultima_fecha: ultimaAsistencia.fecha_hora,
+        fuente: 'asistencias'
+      });
     } else {
-      res.json({ ultimo_tipo: 'salida' }); // Si no hay registros, próximo debería ser entrada
+      // Si no hay registros, próximo debería ser entrada
+      res.json({ 
+        ultimo_tipo: 'salida',
+        esta_dentro: false,
+        ultima_fecha: null,
+        fuente: 'sin_registros'
+      });
     }
   } catch (err) {
-    res.status(500).json({ error: 'Error al determinar último acceso' });
+    res.status(500).json({ error: 'Error al determinar último acceso', details: err.message });
+  }
+});
+
+// Obtener historial de movimientos de un estudiante
+app.get('/asistencias/historial/:dni', async (req, res) => {
+  try {
+    const { dni } = req.params;
+    const { limit } = req.query;
+    
+    let query = Asistencia.find({ dni }).sort({ fecha_hora: -1 });
+    
+    if (limit) {
+      query = query.limit(parseInt(limit));
+    }
+    
+    const historial = await query;
+    res.json({
+      success: true,
+      historial,
+      count: historial.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener historial' });
+  }
+});
+
+// Validar coherencia de movimiento - Mejorado con validación temporal y estado de presencia
+app.post('/asistencias/validar-movimiento', async (req, res) => {
+  try {
+    const { dni, tipo, fecha_hora } = req.body;
+    
+    if (!dni || !tipo || !fecha_hora) {
+      return res.status(400).json({ 
+        error: 'Faltan parámetros requeridos: dni, tipo, fecha_hora' 
+      });
+    }
+
+    const fechaMovimiento = new Date(fecha_hora);
+    
+    // 1. Verificar estado de presencia actual (fuente más confiable)
+    const presenciaActual = await Presencia.findOne({ estudiante_dni: dni, esta_dentro: true });
+    
+    if (presenciaActual) {
+      // Estudiante está registrado como dentro del campus
+      if (tipo === 'entrada') {
+        return res.json({
+          es_valido: false,
+          tipo_sugerido: 'salida',
+          motivo: 'El estudiante ya se encuentra registrado dentro del campus. No se puede registrar otra entrada.',
+          requiere_autorizacion_manual: true,
+          presencia_actual: {
+            hora_entrada: presenciaActual.hora_entrada,
+            punto_entrada: presenciaActual.punto_entrada
+          }
+        });
+      }
+      // Si es salida, validar coherencia temporal con la entrada
+      if (fechaMovimiento < presenciaActual.hora_entrada) {
+        return res.json({
+          es_valido: false,
+          tipo_sugerido: 'salida',
+          motivo: 'La fecha/hora de salida no puede ser anterior a la hora de entrada',
+          requiere_autorizacion_manual: true
+        });
+      }
+    } else {
+      // Estudiante NO está registrado como dentro
+      if (tipo === 'salida') {
+        return res.json({
+          es_valido: false,
+          tipo_sugerido: 'entrada',
+          motivo: 'No se puede registrar salida sin registro previo de entrada',
+          requiere_autorizacion_manual: true
+        });
+      }
+    }
+
+    // 2. Validar con último movimiento en asistencias (para coherencia adicional)
+    const ultimaAsistencia = await Asistencia.findOne({ dni }).sort({ fecha_hora: -1 });
+    
+    if (ultimaAsistencia) {
+      // Validar coherencia temporal - fecha no puede ser anterior al último registro
+      if (fechaMovimiento < ultimaAsistencia.fecha_hora) {
+        return res.json({
+          es_valido: false,
+          tipo_sugerido: ultimaAsistencia.tipo === 'entrada' ? 'salida' : 'entrada',
+          motivo: 'La fecha/hora del movimiento es anterior al último registro',
+          requiere_autorizacion_manual: true,
+          ultimo_registro: {
+            tipo: ultimaAsistencia.tipo,
+            fecha_hora: ultimaAsistencia.fecha_hora
+          }
+        });
+      }
+
+      // Validar secuencia lógica - no puede haber dos movimientos del mismo tipo consecutivos
+      if (ultimaAsistencia.tipo === tipo) {
+        const tipoEsperado = ultimaAsistencia.tipo === 'entrada' ? 'salida' : 'entrada';
+        return res.json({
+          es_valido: false,
+          tipo_sugerido: tipoEsperado,
+          motivo: `El último movimiento fue ${ultimaAsistencia.tipo}. El siguiente debe ser ${tipoEsperado}`,
+          requiere_autorizacion_manual: true
+        });
+      }
+
+      // Validar tiempo mínimo entre movimientos (30 segundos)
+      const diferencia = fechaMovimiento.getTime() - ultimaAsistencia.fecha_hora.getTime();
+      if (diferencia < 30000) { // 30 segundos en milisegundos
+        return res.json({
+          es_valido: false,
+          tipo_sugerido: tipo,
+          motivo: 'Movimiento registrado muy rápido después del anterior. Esperar al menos 30 segundos',
+          requiere_autorizacion_manual: false,
+          diferencia_segundos: Math.floor(diferencia / 1000)
+        });
+      }
+    }
+
+    // 3. Todo correcto - validación pasada
+    return res.json({
+      es_valido: true,
+      tipo_sugerido: tipo,
+      motivo: null,
+      requiere_autorizacion_manual: false,
+      estado_presencia: presenciaActual ? 'dentro' : 'fuera'
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al validar movimiento',
+      details: err.message 
+    });
+  }
+});
+
+// Calcular estudiantes en campus - Mejorado usando colección de Presencia
+app.get('/asistencias/estudiantes-en-campus', async (req, res) => {
+  try {
+    // Usar la colección de Presencia como fuente principal (más confiable)
+    const presenciasActivas = await Presencia.find({ esta_dentro: true })
+      .sort({ hora_entrada: -1 });
+    
+    const estudiantesEnCampus = [];
+    const estudiantesPorFacultad = {};
+    let estudiantesDentro = 0;
+
+    // Procesar cada presencia activa
+    for (const presencia of presenciasActivas) {
+      estudiantesDentro++;
+      
+      // Calcular tiempo en campus
+      const ahora = new Date();
+      const tiempoEnCampus = ahora - presencia.hora_entrada;
+      const horas = Math.floor(tiempoEnCampus / (1000 * 60 * 60));
+      const minutos = Math.floor((tiempoEnCampus % (1000 * 60 * 60)) / (1000 * 60));
+      
+      estudiantesEnCampus.push({
+        dni: presencia.estudiante_dni,
+        estudiante_id: presencia.estudiante_id,
+        nombre: presencia.estudiante_nombre,
+        facultad: presencia.facultad,
+        escuela: presencia.escuela,
+        hora_entrada: presencia.hora_entrada,
+        punto_entrada: presencia.punto_entrada,
+        guardia_entrada: presencia.guardia_entrada,
+        tiempo_en_campus_minutos: Math.floor(tiempoEnCampus / (1000 * 60)),
+        tiempo_en_campus_formateado: `${horas}h ${minutos}m`
+      });
+
+      // Contar por facultad
+      const facultad = presencia.facultad || 'N/A';
+      estudiantesPorFacultad[facultad] = (estudiantesPorFacultad[facultad] || 0) + 1;
+    }
+
+    // Obtener estadísticas adicionales de asistencias del día
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const mañana = new Date(hoy);
+    mañana.setDate(mañana.getDate() + 1);
+
+    const asistenciasHoy = await Asistencia.countDocuments({
+      fecha_hora: { $gte: hoy, $lt: mañana }
+    });
+
+    const entradasHoy = await Asistencia.countDocuments({
+      fecha_hora: { $gte: hoy, $lt: mañana },
+      tipo: 'entrada'
+    });
+
+    const salidasHoy = await Asistencia.countDocuments({
+      fecha_hora: { $gte: hoy, $lt: mañana },
+      tipo: 'salida'
+    });
+
+    res.json({
+      success: true,
+      total_estudiantes_en_campus: estudiantesDentro,
+      estudiantes: estudiantesEnCampus,
+      por_facultad: estudiantesPorFacultad,
+      estadisticas_hoy: {
+        total_asistencias: asistenciasHoy,
+        entradas: entradasHoy,
+        salidas: salidasHoy,
+        fecha: hoy.toISOString().split('T')[0]
+      },
+      ultima_actualizacion: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al calcular estudiantes en campus',
+      details: err.message 
+    });
+  }
+});
+
+// Verificar si estudiante está en campus - Mejorado usando Presencia
+app.get('/asistencias/esta-en-campus/:dni', async (req, res) => {
+  try {
+    const { dni } = req.params;
+    
+    // Verificar en colección de Presencia (fuente principal)
+    const presencia = await Presencia.findOne({ estudiante_dni: dni, esta_dentro: true });
+    
+    if (presencia) {
+      const ahora = new Date();
+      const tiempoEnCampus = ahora - presencia.hora_entrada;
+      
+      return res.json({
+        esta_en_campus: true,
+        hora_entrada: presencia.hora_entrada,
+        punto_entrada: presencia.punto_entrada,
+        tiempo_en_campus_minutos: Math.floor(tiempoEnCampus / (1000 * 60)),
+        fuente: 'presencia'
+      });
+    }
+    
+    // Si no hay presencia activa, verificar último movimiento
+    const ultimaAsistencia = await Asistencia.findOne({ dni }).sort({ fecha_hora: -1 });
+    
+    const estaDentro = ultimaAsistencia && ultimaAsistencia.tipo === 'entrada';
+    
+    res.json({
+      success: true,
+      esta_en_campus: estaDentro,
+      ultimo_movimiento: ultimaAsistencia ? {
+        tipo: ultimaAsistencia.tipo,
+        fecha_hora: ultimaAsistencia.fecha_hora
+      } : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al verificar si está en campus' });
   }
 });
 

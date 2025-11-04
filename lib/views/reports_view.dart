@@ -463,11 +463,11 @@ class _ReportsViewState extends State<ReportsView>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    asistencia.entradaTipo,
+                    asistencia.tipo.descripcion,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue,
+                      color: asistencia.tipo == TipoMovimiento.entrada ? Colors.green : Colors.red,
                     ),
                   ),
                   Text(
