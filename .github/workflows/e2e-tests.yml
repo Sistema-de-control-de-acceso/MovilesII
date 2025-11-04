@@ -1,0 +1,119 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Ejecutar tests E2E diariamente a las 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  e2e-backend-tests:
+    name: Backend E2E Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./backend
+      run: npm ci
+    
+    - name: Run E2E tests
+      working-directory: ./backend
+      env:
+        NODE_ENV: test
+        MONGODB_URI: mongodb://localhost:27017/test
+      run: npm run test:e2e
+      continue-on-error: false
+    
+    - name: Run Contract tests
+      working-directory: ./backend
+      env:
+        NODE_ENV: test
+        MONGODB_URI: mongodb://localhost:27017/test
+      run: npm run test:contracts
+    
+    - name: Upload E2E test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: e2e-test-results
+        path: |
+          backend/coverage/
+          backend/test-results/
+    
+    - name: Publish test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Backend E2E Tests
+        path: backend/test-results/*.xml
+        reporter: java-junit
+
+  e2e-staging-tests:
+    name: E2E Tests against Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      working-directory: ./backend
+      run: npm ci
+    
+    - name: Run E2E tests against staging
+      working-directory: ./backend
+      env:
+        NODE_ENV: staging
+        API_URL: ${{ secrets.STAGING_API_URL }}
+        MONGODB_URI: ${{ secrets.STAGING_MONGODB_URI }}
+      run: |
+        echo "Running E2E tests against staging environment..."
+        npm run test:e2e -- --testTimeout=60000
+    
+    - name: Generate E2E report
+      if: always()
+      run: |
+        echo "## E2E Test Results - Staging" >> $GITHUB_STEP_SUMMARY
+        echo "Tests executed against staging environment: ${{ secrets.STAGING_API_URL }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ -f "coverage/lcov.info" ]; then
+          echo "Coverage report generated" >> $GITHUB_STEP_SUMMARY
+        fi
+    
+    - name: Upload staging test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: e2e-staging-test-results
+        path: |
+          backend/coverage/
+          backend/test-results/
+
