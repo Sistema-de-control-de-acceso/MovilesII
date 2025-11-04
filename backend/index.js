@@ -3940,6 +3940,245 @@ app.post('/api/ml/clustering/validate', async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE GESTIÓN DE HISTORIAL ====================
+
+// Importar servicios de historial
+const HistoryManagementService = require('./services/history_management_service');
+const DatabaseIndexes = require('./utils/database_indexes');
+
+// Instancias de servicios
+const historyService = new HistoryManagementService(Asistencia, Presencia);
+const indexService = new DatabaseIndexes();
+
+// Inicializar servicio de historial (crear índices)
+historyService.initialize().catch(err => {
+  console.warn('Advertencia: Error inicializando servicio de historial:', err.message);
+});
+
+// Obtener historial con filtros
+app.get('/api/history', async (req, res) => {
+  try {
+    const {
+      collection = 'asistencias',
+      fechaInicio = null,
+      fechaFin = null,
+      codigoUniversitario = null,
+      dni = null,
+      puntoControlId = null,
+      includeArchived = false,
+      limit = 1000,
+      skip = 0
+    } = req.query;
+
+    const result = await historyService.getHistory({
+      collection,
+      fechaInicio,
+      fechaFin,
+      codigoUniversitario,
+      dni,
+      puntoControlId,
+      includeArchived: includeArchived === 'true',
+      limit: parseInt(limit),
+      skip: parseInt(skip)
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error obteniendo historial',
+      details: err.message
+    });
+  }
+});
+
+// Obtener estadísticas del historial
+app.get('/api/history/stats', async (req, res) => {
+  try {
+    const stats = await historyService.getHistoryStats();
+    res.json({
+      success: true,
+      ...stats
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error obteniendo estadísticas',
+      details: err.message
+    });
+  }
+});
+
+// Archivar datos antiguos
+app.post('/api/history/archive', async (req, res) => {
+  try {
+    const {
+      collection = 'asistencias',
+      forceDate = null,
+      dryRun = false
+    } = req.body;
+
+    const result = await historyService.archiveOldData({
+      collection,
+      forceDate: forceDate ? new Date(forceDate) : null,
+      dryRun: dryRun === true
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error archivando datos',
+      details: err.message
+    });
+  }
+});
+
+// Verificar estado de índices
+app.get('/api/history/indexes', async (req, res) => {
+  try {
+    const indexesStatus = await historyService.checkIndexesStatus();
+    res.json({
+      success: true,
+      ...indexesStatus
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error verificando índices',
+      details: err.message
+    });
+  }
+});
+
+// Ejecutar mantenimiento completo
+app.post('/api/history/maintenance', async (req, res) => {
+  try {
+    const {
+      createIndexes = true,
+      archiveOldData = true,
+      collections = ['asistencias', 'presencia']
+    } = req.body;
+
+    // Ejecutar en segundo plano si es solicitado
+    if (req.body.async === true) {
+      res.json({
+        success: true,
+        message: 'Mantenimiento iniciado en segundo plano',
+        timestamp: new Date()
+      });
+
+      // Ejecutar en segundo plano
+      historyService.performMaintenance({
+        createIndexes,
+        archiveOldData,
+        collections
+      }).then(result => {
+        console.log('✅ Mantenimiento completado:', result);
+      }).catch(error => {
+        console.error('❌ Error en mantenimiento:', error);
+      });
+
+      return;
+    }
+
+    // Ejecutar sincrónicamente
+    const result = await historyService.performMaintenance({
+      createIndexes,
+      archiveOldData,
+      collections
+    });
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error ejecutando mantenimiento',
+      details: err.message
+    });
+  }
+});
+
+// Exportar historial
+app.post('/api/history/export', async (req, res) => {
+  try {
+    const {
+      collection = 'asistencias',
+      fechaInicio = null,
+      fechaFin = null,
+      format = 'json'
+    } = req.body;
+
+    const result = await historyService.exportHistory({
+      collection,
+      fechaInicio,
+      fechaFin,
+      format
+    });
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error exportando historial',
+      details: err.message
+    });
+  }
+});
+
+// Listar archivos de archivo
+app.get('/api/history/archives', async (req, res) => {
+  try {
+    const { collection = null } = req.query;
+    const files = await historyService.retentionService.listArchiveFiles(collection);
+    
+    res.json({
+      success: true,
+      files,
+      total: files.length,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error listando archivos',
+      details: err.message
+    });
+  }
+});
+
+// Restaurar desde archivo de archivo
+app.post('/api/history/restore', async (req, res) => {
+  try {
+    const { collection, period } = req.body;
+
+    if (!collection || !period) {
+      return res.status(400).json({
+        error: 'collection y period son requeridos'
+      });
+    }
+
+    const result = await historyService.retentionService.restoreFromArchive(collection, period);
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error restaurando desde archivo',
+      details: err.message
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
