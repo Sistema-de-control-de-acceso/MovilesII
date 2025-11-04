@@ -17,29 +17,71 @@ app.get('/puntos-control', async (req, res) => {
 // Crear un nuevo punto de control
 app.post('/puntos-control', async (req, res) => {
   try {
-    const { nombre, ubicacion, descripcion } = req.body;
+    const { nombre, ubicacion, descripcion, coordenadas_lat, coordenadas_lng, coordenadas } = req.body;
     if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
+    
+    // Procesar coordenadas GPS
+    let lat = coordenadas_lat;
+    let lng = coordenadas_lng;
+    let coordString = coordenadas;
+    
+    // Si se proporcionan coordenadas en formato string, parsearlas
+    if (coordenadas && typeof coordenadas === 'string' && !lat && !lng) {
+      const coords = coordenadas.split(',');
+      if (coords.length === 2) {
+        lat = parseFloat(coords[0].trim());
+        lng = parseFloat(coords[1].trim());
+        coordString = coordenadas;
+      }
+    }
+    
+    // Si se proporcionan lat/lng pero no string, crear el string
+    if (lat && lng && !coordString) {
+      coordString = `${lat},${lng}`;
+    }
+    
     const punto = new PuntoControl({
       _id: uuidv4(),
       nombre,
       ubicacion,
-      descripcion
+      descripcion,
+      coordenadas_lat: lat,
+      coordenadas_lng: lng,
+      coordenadas: coordString,
+      activo: true,
+      fecha_creacion: new Date(),
+      fecha_actualizacion: new Date()
     });
     await punto.save();
     res.status(201).json(punto);
   } catch (err) {
-    res.status(500).json({ error: 'Error al crear punto de control' });
+    res.status(500).json({ error: 'Error al crear punto de control', details: err.message });
   }
 });
 
 // Actualizar punto de control
 app.put('/puntos-control/:id', async (req, res) => {
   try {
-    const punto = await PuntoControl.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const updateData = { ...req.body };
+    
+    // Procesar coordenadas si se proporcionan
+    if (updateData.coordenadas && typeof updateData.coordenadas === 'string' && 
+        !updateData.coordenadas_lat && !updateData.coordenadas_lng) {
+      const coords = updateData.coordenadas.split(',');
+      if (coords.length === 2) {
+        updateData.coordenadas_lat = parseFloat(coords[0].trim());
+        updateData.coordenadas_lng = parseFloat(coords[1].trim());
+      }
+    }
+    
+    // Actualizar fecha de actualización
+    updateData.fecha_actualizacion = new Date();
+    
+    const punto = await PuntoControl.findByIdAndUpdate(req.params.id, updateData, { new: true });
     if (!punto) return res.status(404).json({ error: 'Punto de control no encontrado' });
     res.json(punto);
   } catch (err) {
-    res.status(500).json({ error: 'Error al actualizar punto de control' });
+    res.status(500).json({ error: 'Error al actualizar punto de control', details: err.message });
   }
 });
 
@@ -51,6 +93,87 @@ app.delete('/puntos-control/:id', async (req, res) => {
     res.json({ message: 'Punto de control eliminado' });
   } catch (err) {
     res.status(500).json({ error: 'Error al eliminar punto de control' });
+  }
+});
+
+// Obtener punto de control por ID
+app.get('/puntos-control/:id', async (req, res) => {
+  try {
+    const punto = await PuntoControl.findById(req.params.id);
+    if (!punto) return res.status(404).json({ error: 'Punto de control no encontrado' });
+    res.json(punto);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener punto de control', details: err.message });
+  }
+});
+
+// Obtener mapa de puntos de control (con coordenadas GPS)
+app.get('/puntos-control/mapa', async (req, res) => {
+  try {
+    const { activo = true } = req.query;
+    
+    // Obtener puntos de control con coordenadas
+    const query = activo === 'true' || activo === true 
+      ? { activo: true, coordenadas_lat: { $exists: true, $ne: null }, coordenadas_lng: { $exists: true, $ne: null } }
+      : { coordenadas_lat: { $exists: true, $ne: null }, coordenadas_lng: { $exists: true, $ne: null } };
+    
+    const puntos = await PuntoControl.find(query);
+    
+    // Formatear datos para mapa
+    const mapaData = puntos.map(punto => ({
+      id: punto._id,
+      nombre: punto.nombre,
+      ubicacion: punto.ubicacion,
+      descripcion: punto.descripcion,
+      coordenadas: {
+        lat: punto.coordenadas_lat,
+        lng: punto.coordenadas_lng
+      },
+      activo: punto.activo
+    }));
+    
+    res.json({
+      success: true,
+      puntos: mapaData,
+      total: mapaData.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener mapa de puntos de control', details: err.message });
+  }
+});
+
+// Obtener asistencias por punto de control
+app.get('/asistencias/por-punto-control/:puntoControlId', async (req, res) => {
+  try {
+    const { puntoControlId } = req.params;
+    const { fechaInicio, fechaFin, limit = 100 } = req.query;
+    
+    // Construir query
+    const query = { punto_control_id: puntoControlId };
+    
+    if (fechaInicio || fechaFin) {
+      query.fecha_hora = {};
+      if (fechaInicio) query.fecha_hora.$gte = new Date(fechaInicio);
+      if (fechaFin) query.fecha_hora.$lte = new Date(fechaFin);
+    }
+    
+    const asistencias = await Asistencia.find(query)
+      .sort({ fecha_hora: -1 })
+      .limit(parseInt(limit));
+    
+    // Obtener información del punto de control
+    const puntoControl = await PuntoControl.findById(puntoControlId);
+    
+    res.json({
+      success: true,
+      punto_control: puntoControl,
+      asistencias: asistencias,
+      total: asistencias.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener asistencias por punto de control', details: err.message });
   }
 });
 
@@ -342,10 +465,33 @@ app.get('/', (req, res) => {
 // Ruta para obtener asistencias
 app.get('/asistencias', async (req, res) => {
   try {
-    const asistencias = await Asistencia.find();
+    const { punto_control_id, con_punto_control = false } = req.query;
+    
+    let query = {};
+    if (punto_control_id) {
+      query.punto_control_id = punto_control_id;
+    }
+    
+    const asistencias = await Asistencia.find(query).sort({ fecha_hora: -1 });
+    
+    // Si se solicita información de punto de control, agregarla
+    if (con_punto_control === 'true' || con_punto_control === true) {
+      const asistenciasConPunto = await Promise.all(
+        asistencias.map(async (asistencia) => {
+          const asistenciaObj = asistencia.toObject();
+          if (asistencia.punto_control_id) {
+            const puntoControl = await PuntoControl.findById(asistencia.punto_control_id);
+            asistenciaObj.punto_control = puntoControl || null;
+          }
+          return asistenciaObj;
+        })
+      );
+      return res.json(asistenciasConPunto);
+    }
+    
     res.json(asistencias);
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener asistencias' });
+    res.status(500).json({ error: 'Error al obtener asistencias', details: err.message });
   }
 });
 
@@ -584,7 +730,45 @@ app.get('/externos', async (req, res) => {
 // Ruta para registrar asistencia completa (US025-US030)
 app.post('/asistencias/completa', async (req, res) => {
   try {
-    const asistencia = new Asistencia(req.body);
+    const asistenciaData = req.body;
+    
+    // Validar y preparar datos de punto de control si se proporciona
+    if (asistenciaData.punto_control_id) {
+      // Verificar que el punto de control existe
+      const puntoControl = await PuntoControl.findById(asistenciaData.punto_control_id);
+      if (!puntoControl) {
+        return res.status(400).json({ 
+          error: 'Punto de control no encontrado', 
+          punto_control_id: asistenciaData.punto_control_id 
+        });
+      }
+      
+      // Si el punto de control tiene coordenadas y no se proporcionan, usar las del punto de control
+      if (!asistenciaData.coordenadas_lat && !asistenciaData.coordenadas_lng) {
+        if (puntoControl.coordenadas_lat && puntoControl.coordenadas_lng) {
+          asistenciaData.coordenadas_lat = puntoControl.coordenadas_lat;
+          asistenciaData.coordenadas_lng = puntoControl.coordenadas_lng;
+          asistenciaData.coordenadas = `${puntoControl.coordenadas_lat},${puntoControl.coordenadas_lng}`;
+        }
+      }
+      
+      // Si no hay descripción de ubicación, usar la del punto de control
+      if (!asistenciaData.descripcion_ubicacion && puntoControl.ubicacion) {
+        asistenciaData.descripcion_ubicacion = puntoControl.ubicacion;
+      }
+    }
+    
+    // Procesar coordenadas si vienen en formato string
+    if (asistenciaData.coordenadas && typeof asistenciaData.coordenadas === 'string' && 
+        !asistenciaData.coordenadas_lat && !asistenciaData.coordenadas_lng) {
+      const coords = asistenciaData.coordenadas.split(',');
+      if (coords.length === 2) {
+        asistenciaData.coordenadas_lat = parseFloat(coords[0].trim());
+        asistenciaData.coordenadas_lng = parseFloat(coords[1].trim());
+      }
+    }
+    
+    const asistencia = new Asistencia(asistenciaData);
     await asistencia.save();
     res.status(201).json(asistencia);
   } catch (err) {
