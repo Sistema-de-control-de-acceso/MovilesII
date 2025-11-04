@@ -290,8 +290,8 @@ class ReportsViewModel extends ChangeNotifier {
       };
     }
 
-    final entradas = asistenciasGuardia.where((a) => a.entradaTipo == 'entrada').length;
-    final salidas = asistenciasGuardia.where((a) => a.entradaTipo == 'salida').length;
+    final entradas = asistenciasGuardia.where((a) => a.tipo == TipoMovimiento.entrada).length;
+    final salidas = asistenciasGuardia.where((a) => a.tipo == TipoMovimiento.salida).length;
     final autorizacionesManuales = asistenciasGuardia.where((a) => a.autorizacionManual == true).length;
 
     // Puerta más usada
