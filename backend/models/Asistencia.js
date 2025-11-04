@@ -23,6 +23,10 @@ const AsistenciaSchema = new mongoose.Schema({
   coordenadas_lat: Number, // Latitud GPS (opcional)
   coordenadas_lng: Number, // Longitud GPS (opcional)
   descripcion_ubicacion: String, // Descripción de la ubicación
+  // Campos de archivado
+  archived: Boolean, // Si el registro está archivado
+  archived_at: Date, // Fecha de archivado
+  archive_file: String, // Nombre del archivo de archivo
 }, { collection: 'asistencias', strict: false, _id: false });
 
 module.exports = mongoose.model('asistencias', AsistenciaSchema);

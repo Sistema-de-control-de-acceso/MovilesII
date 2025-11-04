@@ -32,7 +32,11 @@
     "test:contracts": "cross-env NODE_ENV=test jest --testPathPattern=contracts --coverage",
     "ml:train": "node ml/run_training.js",
     "ml:validate": "node -e \"require('./ml/dataset_collector'); const collector = new (require('./ml/dataset_collector'))(require('./index').Asistencia); collector.validateDatasetAvailability().then(console.log);\"",
-    "ml:arima": "node ml/run_arima_forecast.js"
+    "ml:arima": "node ml/run_arima_forecast.js",
+    "history:init": "node scripts/manage_history.js init",
+    "history:stats": "node scripts/manage_history.js stats",
+    "history:archive": "node scripts/manage_history.js archive",
+    "history:maintenance": "node scripts/manage_history.js maintenance"
   },
   "jest": {
     "testEnvironment": "node",
