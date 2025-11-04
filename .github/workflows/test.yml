@@ -1,4 +1,4 @@
-name: Tests y Cobertura
+name: Tests Unitarios y Cobertura
 
 on:
   push:
