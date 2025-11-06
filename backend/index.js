@@ -1,5 +1,6 @@
 // Backend completo con autenticación segura
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 const PuntoControl = require('./models/PuntoControl');
 const Asignacion = require('./models/Asignacion');
 const { Bus, ViajeBus } = require('./models/Bus');
@@ -260,7 +261,50 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 
 const app = express();
-app.use(cors());
+
+// Configuración CORS para web y app móvil
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (app móvil, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Lista de orígenes permitidos
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'https://movilesii.onrender.com',
+      /^https?:\/\/192\.168\.\d+\.\d+:\d+$/, // IPs locales para desarrollo móvil
+      /^https?:\/\/10\.\d+\.\d+\.\d+:\d+$/, // IPs de red local
+    ];
+    
+    // Verificar si el origen está permitido
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return allowed === origin;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      // En desarrollo, permitir todos los orígenes
+      if (process.env.NODE_ENV !== 'production') {
+        callback(null, true);
+      } else {
+        callback(new Error('No permitido por CORS'));
+      }
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Type', 'X-Device-ID'],
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -5436,6 +5480,115 @@ app.post('/api/validation/repair', async (req, res) => {
     res.status(500).json({ 
       error: 'Error reparando inconsistencias', 
       details: err.message 
+    });
+  }
+});
+
+// ==================== SERVICIO DE COMPATIBILIDAD DE API ====================
+
+// Importar servicio de compatibilidad
+const ApiCompatibilityService = require('./services/api_compatibility_service');
+const ApiDocumentationGenerator = require('./utils/api_documentation_generator');
+
+// Instancias de servicios
+const apiCompatibilityService = new ApiCompatibilityService();
+const apiDocGenerator = new ApiDocumentationGenerator();
+
+// Registrar endpoints críticos
+apiCompatibilityService.registerEndpoint('POST', '/login', {
+  category: 'Autenticación',
+  description: 'Login de usuario',
+  compatible: { web: true, mobile: true }
+});
+
+apiCompatibilityService.registerEndpoint('GET', '/alumnos/:codigo', {
+  category: 'Alumnos',
+  description: 'Obtener alumno por código',
+  compatible: { web: true, mobile: true }
+});
+
+apiCompatibilityService.registerEndpoint('POST', '/asistencias', {
+  category: 'Asistencias',
+  description: 'Crear asistencia',
+  compatible: { web: true, mobile: true }
+});
+
+apiCompatibilityService.registerEndpoint('GET', '/asistencias', {
+  category: 'Asistencias',
+  description: 'Listar asistencias',
+  compatible: { web: true, mobile: true }
+});
+
+apiCompatibilityService.registerEndpoint('GET', '/health', {
+  category: 'Sistema',
+  description: 'Health check del servidor',
+  compatible: { web: true, mobile: true }
+});
+
+// Endpoint para obtener reporte de compatibilidad
+app.get('/api/compatibility/report', async (req, res) => {
+  try {
+    const report = apiCompatibilityService.generateCompatibilityReport();
+    const criticalValidation = apiCompatibilityService.validateCriticalEndpoints();
+    
+    res.json({
+      success: true,
+      report,
+      criticalValidation,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error generando reporte de compatibilidad',
+      details: err.message
+    });
+  }
+});
+
+// Endpoint para validar request
+app.post('/api/compatibility/validate', async (req, res) => {
+  try {
+    const { method, path, headers } = req.body;
+    const validation = apiCompatibilityService.validateRequest(method, path, headers);
+    
+    res.json({
+      success: true,
+      ...validation
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error validando compatibilidad',
+      details: err.message
+    });
+  }
+});
+
+// Endpoint para obtener documentación de API
+app.get('/api/docs', async (req, res) => {
+  try {
+    const format = req.query.format || 'markdown';
+    const outputPath = path.join(__dirname, '../docs/API_UNIFIED.md');
+    
+    if (format === 'openapi') {
+      const openApiPath = path.join(__dirname, '../docs/openapi.json');
+      await apiDocGenerator.generateOpenAPI(openApiPath);
+      return res.json({
+        success: true,
+        message: 'Documentación OpenAPI generada',
+        path: openApiPath
+      });
+    } else {
+      await apiDocGenerator.generateMarkdown(outputPath);
+      return res.json({
+        success: true,
+        message: 'Documentación Markdown generada',
+        path: outputPath
+      });
+    }
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error generando documentación',
+      details: err.message
     });
   }
 });
