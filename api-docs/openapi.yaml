@@ -1,0 +1,2066 @@
+openapi: 3.0.3
+info:
+  title: Acees Group - Sistema de Control de Acceso NFC API
+  description: |
+    API REST completa para el sistema de control de acceso con tecnología NFC.
+    
+    ## Características
+    - Autenticación segura con bcrypt
+    - Gestión de alumnos, usuarios y asistencias
+    - Control de presencia en tiempo real
+    - Sesiones de guardias con detección de conflictos
+    - Machine Learning para predicción de buses nocturnos
+    
+    ## Base URLs
+    - **Producción**: `https://acees-group-backend-production.up.railway.app`
+    - **Desarrollo**: `http://localhost:3000`
+    - **Local Network**: `http://192.168.1.51:3000`
+    
+    ## Autenticación
+    Actualmente la API no requiere tokens JWT. La autenticación se realiza mediante login y se mantiene en el cliente.
+    
+  version: 1.0.0
+  contact:
+    name: Acees Group
+    email: support@aceesgroup.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://acees-group-backend-production.up.railway.app
+    description: Producción (Railway)
+  - url: http://localhost:3000
+    description: Desarrollo Local
+  - url: http://192.168.1.51:3000
+    description: Red Local
+
+tags:
+  - name: Health
+    description: Verificación de estado del servidor
+  - name: Autenticación
+    description: Login y gestión de sesiones
+  - name: Usuarios
+    description: CRUD de usuarios (admin, guardias)
+  - name: Alumnos
+    description: Gestión de estudiantes
+  - name: Asistencias
+    description: Registro y consulta de asistencias
+  - name: Facultades y Escuelas
+    description: Gestión de facultades y escuelas
+  - name: Externos
+    description: Gestión de visitantes externos
+  - name: Visitas
+    description: Registro de visitas
+  - name: Decisiones Manuales
+    description: Decisiones manuales de guardias
+  - name: Presencia
+    description: Control de presencia en campus
+  - name: Sesiones
+    description: Gestión de sesiones de guardias
+  - name: Machine Learning
+    description: Predicción de demanda de buses nocturnos
+
+paths:
+  /api/health:
+    get:
+      tags:
+        - Health
+      summary: Health Check
+      description: Verifica el estado del servidor y la conexión a la base de datos
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Servidor funcionando correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: OK
+                message: Server is running
+                timestamp: "2025-01-15T10:30:00.000Z"
+                database: connected
+
+  /login:
+    post:
+      tags:
+        - Autenticación
+      summary: Autenticar usuario
+      description: Autentica un usuario con email y contraseña. La contraseña se verifica con bcrypt.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: guardia@ejemplo.com
+              password: contraseña123
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+              example:
+                id: user_id_123
+                nombre: Juan
+                apellido: Pérez
+                email: guardia@ejemplo.com
+                dni: 12345678
+                rango: guardia
+                puerta_acargo: Puerta Principal
+                estado: activo
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /usuarios:
+    get:
+      tags:
+        - Usuarios
+      summary: Listar usuarios
+      description: Obtiene la lista de todos los usuarios (sin contraseñas)
+      operationId: getUsuarios
+      responses:
+        '200':
+          description: Lista de usuarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Usuario'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    post:
+      tags:
+        - Usuarios
+      summary: Crear usuario
+      description: Crea un nuevo usuario. La contraseña se encripta automáticamente con bcrypt.
+      operationId: createUsuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUsuarioRequest'
+            example:
+              nombre: Juan
+              apellido: Pérez
+              dni: 12345678
+              email: guardia@ejemplo.com
+              password: contraseña123
+              rango: guardia
+              puerta_acargo: Puerta Principal
+              telefono: 987654321
+      responses:
+        '201':
+          description: Usuario creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /usuarios/{id}:
+    get:
+      tags:
+        - Usuarios
+      summary: Obtener usuario por ID
+      description: Obtiene un usuario específico por su ID
+      operationId: getUsuarioById
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Usuario encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    put:
+      tags:
+        - Usuarios
+      summary: Actualizar usuario
+      description: Actualiza los datos de un usuario existente. No incluir password en este endpoint.
+      operationId: updateUsuario
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUsuarioRequest'
+            example:
+              nombre: Juan Carlos
+              apellido: Pérez García
+              telefono: 987654321
+              estado: activo
+      responses:
+        '200':
+          description: Usuario actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /usuarios/{id}/password:
+    put:
+      tags:
+        - Usuarios
+      summary: Cambiar contraseña
+      description: Cambia la contraseña de un usuario. La nueva contraseña se encripta automáticamente.
+      operationId: changePassword
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  format: password
+                  description: Nueva contraseña
+              example:
+                password: nueva_contraseña123
+      responses:
+        '200':
+          description: Contraseña actualizada exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Contraseña actualizada exitosamente
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /alumnos:
+    get:
+      tags:
+        - Alumnos
+      summary: Listar alumnos
+      description: Obtiene la lista de todos los alumnos registrados
+      operationId: getAlumnos
+      responses:
+        '200':
+          description: Lista de alumnos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alumno'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /alumnos/{codigo}:
+    get:
+      tags:
+        - Alumnos
+      summary: Buscar alumno por código universitario
+      description: |
+        Busca un alumno por su código universitario. **CRÍTICO para lectura NFC**.
+        
+        Valida que el alumno esté matriculado (estado = true).
+      operationId: getAlumnoByCodigo
+      parameters:
+        - name: codigo
+          in: path
+          required: true
+          description: Código universitario del alumno
+          schema:
+            type: string
+          example: "20201234"
+      responses:
+        '200':
+          description: Alumno encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alumno'
+        '403':
+          description: Alumno no matriculado o inactivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Alumno no matriculado o inactivo
+                alumno:
+                  nombre: María
+                  apellido: González
+                  codigo_universitario: "20201234"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /asistencias:
+    get:
+      tags:
+        - Asistencias
+      summary: Listar asistencias
+      description: Obtiene todas las asistencias registradas
+      operationId: getAsistencias
+      responses:
+        '200':
+          description: Lista de asistencias
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Asistencia'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    post:
+      tags:
+        - Asistencias
+      summary: Registrar asistencia
+      description: Registra una nueva asistencia (entrada o salida)
+      operationId: registrarAsistencia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsistenciaRequest'
+            example:
+              _id: asistencia_id_123
+              nombre: María
+              apellido: González
+              dni: 87654321
+              codigo_universitario: "20201234"
+              siglas_facultad: FC
+              siglas_escuela: IS
+              tipo: entrada
+              fecha_hora: "2025-01-15T10:30:00.000Z"
+              entrada_tipo: entrada
+              puerta: Puerta Principal
+              guardia_id: guardia_id_123
+              guardia_nombre: Juan Pérez
+              autorizacion_manual: false
+              coordenadas: "-12.0464,-77.0428"
+              descripcion_ubicacion: Campus Principal
+      responses:
+        '201':
+          description: Asistencia registrada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asistencia'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /asistencias/completa:
+    post:
+      tags:
+        - Asistencias
+      summary: Registrar asistencia completa
+      description: Registra una asistencia con todos los campos (US025-US030)
+      operationId: registrarAsistenciaCompleta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsistenciaRequest'
+      responses:
+        '201':
+          description: Asistencia completa registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asistencia'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /asistencias/ultimo-acceso/{dni}:
+    get:
+      tags:
+        - Asistencias
+      summary: Determinar último tipo de acceso
+      description: |
+        Determina el último tipo de acceso (entrada/salida) de un estudiante.
+        Utilizado para entrada/salida inteligente (US028).
+      operationId: getUltimoAcceso
+      parameters:
+        - name: dni
+          in: path
+          required: true
+          description: DNI del estudiante
+          schema:
+            type: string
+          example: "87654321"
+      responses:
+        '200':
+          description: Último tipo de acceso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ultimo_tipo:
+                    type: string
+                    enum: [entrada, salida]
+                    description: Último tipo de acceso registrado
+                    example: entrada
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /facultades:
+    get:
+      tags:
+        - Facultades y Escuelas
+      summary: Listar facultades
+      description: Obtiene todas las facultades registradas
+      operationId: getFacultades
+      responses:
+        '200':
+          description: Lista de facultades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Facultad'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /escuelas:
+    get:
+      tags:
+        - Facultades y Escuelas
+      summary: Listar escuelas
+      description: Obtiene todas las escuelas o filtra por facultad
+      operationId: getEscuelas
+      parameters:
+        - name: siglas_facultad
+          in: query
+          required: false
+          description: Filtrar por siglas de facultad
+          schema:
+            type: string
+          example: FC
+      responses:
+        '200':
+          description: Lista de escuelas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Escuela'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /externos:
+    get:
+      tags:
+        - Externos
+      summary: Listar externos
+      description: Obtiene todos los externos registrados
+      operationId: getExternos
+      responses:
+        '200':
+          description: Lista de externos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Externo'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /externos/{dni}:
+    get:
+      tags:
+        - Externos
+      summary: Buscar externo por DNI
+      description: Busca un externo por su DNI
+      operationId: getExternoByDni
+      parameters:
+        - name: dni
+          in: path
+          required: true
+          description: DNI del externo
+          schema:
+            type: string
+          example: "11223344"
+      responses:
+        '200':
+          description: Externo encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Externo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /visitas:
+    get:
+      tags:
+        - Visitas
+      summary: Listar visitas
+      description: Obtiene todas las visitas registradas
+      operationId: getVisitas
+      responses:
+        '200':
+          description: Lista de visitas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Visita'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    post:
+      tags:
+        - Visitas
+      summary: Registrar visita
+      description: Registra una nueva visita
+      operationId: registrarVisita
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitaRequest'
+            example:
+              _id: visita_id_123
+              puerta: Puerta Principal
+              guardia_nombre: Juan Pérez
+              asunto: Reunión académica
+              fecha_hora: "2025-01-15T10:30:00.000Z"
+              nombre: Visitante
+              dni: "11223344"
+              facultad: FC
+      responses:
+        '201':
+          description: Visita registrada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visita'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /decisiones-manuales:
+    get:
+      tags:
+        - Decisiones Manuales
+      summary: Listar decisiones manuales
+      description: Obtiene todas las decisiones manuales (para reportes)
+      operationId: getDecisionesManuales
+      responses:
+        '200':
+          description: Lista de decisiones manuales
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DecisionManual'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    post:
+      tags:
+        - Decisiones Manuales
+      summary: Registrar decisión manual
+      description: Registra una decisión manual del guardia (US024-US025)
+      operationId: registrarDecisionManual
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionManualRequest'
+            example:
+              _id: decision_id_123
+              estudiante_id: alumno_id_123
+              estudiante_dni: "87654321"
+              estudiante_nombre: María González
+              guardia_id: guardia_id_123
+              guardia_nombre: Juan Pérez
+              autorizado: true
+              razon: Estudiante autorizado por administración
+              timestamp: "2025-01-15T10:30:00.000Z"
+              punto_control: Puerta Principal
+              tipo_acceso: entrada
+              datos_estudiante:
+                codigo_universitario: "20201234"
+                facultad: FC
+      responses:
+        '201':
+          description: Decisión manual registrada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionManual'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /decisiones-manuales/guardia/{guardiaId}:
+    get:
+      tags:
+        - Decisiones Manuales
+      summary: Obtener decisiones de un guardia
+      description: Obtiene las decisiones de un guardia específico
+      operationId: getDecisionesGuardia
+      parameters:
+        - name: guardiaId
+          in: path
+          required: true
+          description: ID del guardia
+          schema:
+            type: string
+          example: guardia_id_123
+      responses:
+        '200':
+          description: Lista de decisiones del guardia
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DecisionManual'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /presencia:
+    get:
+      tags:
+        - Presencia
+      summary: Obtener presencia actual
+      description: Obtiene la presencia actual en el campus (estudiantes que están dentro)
+      operationId: getPresenciaActual
+      responses:
+        '200':
+          description: Lista de estudiantes presentes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Presencia'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /presencia/actualizar:
+    post:
+      tags:
+        - Presencia
+      summary: Actualizar presencia
+      description: Actualiza la presencia de un estudiante (entrada o salida)
+      operationId: actualizarPresencia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresenciaUpdateRequest'
+            example:
+              estudiante_dni: "87654321"
+              tipo_acceso: entrada
+              punto_control: Puerta Principal
+              guardia_id: guardia_id_123
+      responses:
+        '200':
+          description: Presencia actualizada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Presencia'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /presencia/historial:
+    get:
+      tags:
+        - Presencia
+      summary: Obtener historial de presencia
+      description: Obtiene el historial completo de presencia
+      operationId: getPresenciaHistorial
+      responses:
+        '200':
+          description: Historial de presencia
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Presencia'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /presencia/largo-tiempo:
+    get:
+      tags:
+        - Presencia
+      summary: Obtener personas con mucho tiempo en campus
+      description: Obtiene personas que llevan más de 8 horas en el campus
+      operationId: getPresenciaLargoTiempo
+      responses:
+        '200':
+          description: Lista de personas con mucho tiempo en campus
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Presencia'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sesiones/iniciar:
+    post:
+      tags:
+        - Sesiones
+      summary: Iniciar sesión de guardia
+      description: |
+        Inicia una sesión de guardia. Verifica conflictos de concurrencia (US059).
+        
+        Si otro guardia está activo en el mismo punto de control, retorna error 409.
+      operationId: iniciarSesionGuardia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SesionIniciarRequest'
+            example:
+              guardia_id: guardia_id_123
+              guardia_nombre: Juan Pérez
+              punto_control: Puerta Principal
+              device_info:
+                platform: Android
+                device_id: device_123
+                app_version: "1.0.0"
+      responses:
+        '201':
+          description: Sesión iniciada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionResponse'
+        '409':
+          description: Conflicto - Otro guardia está activo en este punto de control
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sesiones/heartbeat:
+    post:
+      tags:
+        - Sesiones
+      summary: Heartbeat de sesión
+      description: Mantiene la sesión activa actualizando last_activity
+      operationId: sesionHeartbeat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - session_token
+              properties:
+                session_token:
+                  type: string
+                  description: Token de sesión
+                  example: uuid-session-token-123
+      responses:
+        '200':
+          description: Heartbeat registrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Heartbeat registrado
+                  last_activity:
+                    type: string
+                    format: date-time
+                    example: "2025-01-15T10:35:00.000Z"
+        '404':
+          description: Sesión no encontrada o inactiva
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  session_expired:
+                    type: boolean
+                    example: true
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sesiones/finalizar:
+    post:
+      tags:
+        - Sesiones
+      summary: Finalizar sesión
+      description: Finaliza una sesión de guardia
+      operationId: finalizarSesionGuardia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - session_token
+              properties:
+                session_token:
+                  type: string
+                  description: Token de sesión
+                  example: uuid-session-token-123
+      responses:
+        '200':
+          description: Sesión finalizada exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Sesión finalizada exitosamente
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sesiones/activas:
+    get:
+      tags:
+        - Sesiones
+      summary: Listar sesiones activas
+      description: Obtiene todas las sesiones activas
+      operationId: getSesionesActivas
+      responses:
+        '200':
+          description: Lista de sesiones activas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SesionGuardia'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sesiones/forzar-finalizacion:
+    post:
+      tags:
+        - Sesiones
+      summary: Forzar finalización de sesión
+      description: Fuerza la finalización de sesiones de un guardia (solo administradores)
+      operationId: forzarFinalizacionSesion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - guardia_id
+                - admin_id
+              properties:
+                guardia_id:
+                  type: string
+                  description: ID del guardia cuya sesión se finalizará
+                  example: guardia_id_123
+                admin_id:
+                  type: string
+                  description: ID del administrador que ejecuta la acción
+                  example: admin_id_456
+      responses:
+        '200':
+          description: Sesiones finalizadas por administrador
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Sesiones finalizadas por administrador
+                  sessions_affected:
+                    type: integer
+                    example: 1
+        '403':
+          description: Solo administradores pueden forzar finalización
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ml/datos-historicos:
+    get:
+      tags:
+        - Machine Learning
+      summary: Obtener datos históricos para ML
+      description: Obtiene datos históricos procesados para análisis ML de buses nocturnos
+      operationId: getDatosHistoricosML
+      parameters:
+        - name: fecha_inicio
+          in: query
+          required: false
+          description: Fecha de inicio (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-10-01T00:00:00.000Z"
+        - name: fecha_fin
+          in: query
+          required: false
+          description: Fecha de fin (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+          example: "2025-01-15T23:59:59.999Z"
+        - name: dias_semana
+          in: query
+          required: false
+          description: Filtrar por días de la semana
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Datos históricos procesados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLDatosHistoricos'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ml/recomendaciones-buses:
+    get:
+      tags:
+        - Machine Learning
+      summary: Obtener recomendaciones de buses
+      description: Obtiene recomendaciones almacenadas de buses nocturnos
+      operationId: getRecomendacionesBuses
+      parameters:
+        - name: fecha_desde
+          in: query
+          required: false
+          description: Filtrar desde fecha
+          schema:
+            type: string
+            format: date-time
+        - name: limite
+          in: query
+          required: false
+          description: Límite de resultados (default: 50)
+          schema:
+            type: integer
+            default: 50
+        - name: solo_recientes
+          in: query
+          required: false
+          description: Solo últimas 24 horas
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Recomendaciones de buses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLRecomendacionesResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    post:
+      tags:
+        - Machine Learning
+      summary: Almacenar recomendación de buses
+      description: Almacena una recomendación de buses generada por el modelo ML
+      operationId: almacenarRecomendacionBuses
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MLRecomendacionRequest'
+      responses:
+        '201':
+          description: Recomendación almacenada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLRecomendacionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ml/estado-actual:
+    get:
+      tags:
+        - Machine Learning
+      summary: Obtener estado actual para ML
+      description: Obtiene el estado actual del campus para análisis ML en tiempo real
+      operationId: getEstadoActualML
+      responses:
+        '200':
+          description: Estado actual del campus
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLEstadoActual'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /ml/feedback:
+    post:
+      tags:
+        - Machine Learning
+      summary: Registrar feedback ML
+      description: Registra feedback del sistema para mejorar el modelo ML
+      operationId: registrarFeedbackML
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MLFeedbackRequest'
+      responses:
+        '200':
+          description: Feedback registrado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MLFeedbackResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: ID del usuario
+      schema:
+        type: string
+      example: user_id_123
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: Server is running
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00.000Z"
+        database:
+          type: string
+          enum: [connected, disconnected]
+          example: connected
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email del usuario
+          example: guardia@ejemplo.com
+        password:
+          type: string
+          format: password
+          description: Contraseña del usuario
+          example: contraseña123
+
+    Usuario:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID del usuario
+          example: user_id_123
+        _id:
+          type: string
+          description: ID del usuario (MongoDB)
+          example: user_id_123
+        nombre:
+          type: string
+          description: Nombre del usuario
+          example: Juan
+        apellido:
+          type: string
+          description: Apellido del usuario
+          example: Pérez
+        email:
+          type: string
+          format: email
+          description: Email del usuario
+          example: guardia@ejemplo.com
+        dni:
+          type: string
+          description: DNI del usuario
+          example: "12345678"
+        rango:
+          type: string
+          enum: [admin, guardia]
+          description: Rango del usuario
+          example: guardia
+        estado:
+          type: string
+          enum: [activo, inactivo]
+          description: Estado del usuario
+          example: activo
+        puerta_acargo:
+          type: string
+          nullable: true
+          description: Puerta a cargo del guardia
+          example: Puerta Principal
+        telefono:
+          type: string
+          nullable: true
+          description: Teléfono del usuario
+          example: "987654321"
+        fecha_creacion:
+          type: string
+          format: date-time
+          description: Fecha de creación
+          example: "2025-01-01T00:00:00.000Z"
+        fecha_actualizacion:
+          type: string
+          format: date-time
+          description: Fecha de última actualización
+          example: "2025-01-15T10:00:00.000Z"
+
+    CreateUsuarioRequest:
+      type: object
+      required:
+        - nombre
+        - apellido
+        - dni
+        - email
+        - password
+      properties:
+        nombre:
+          type: string
+          example: Juan
+        apellido:
+          type: string
+          example: Pérez
+        dni:
+          type: string
+          example: "12345678"
+        email:
+          type: string
+          format: email
+          example: guardia@ejemplo.com
+        password:
+          type: string
+          format: password
+          example: contraseña123
+        rango:
+          type: string
+          enum: [admin, guardia]
+          default: guardia
+          example: guardia
+        puerta_acargo:
+          type: string
+          nullable: true
+          example: Puerta Principal
+        telefono:
+          type: string
+          nullable: true
+          example: "987654321"
+
+    UpdateUsuarioRequest:
+      type: object
+      properties:
+        nombre:
+          type: string
+          example: Juan Carlos
+        apellido:
+          type: string
+          example: Pérez García
+        email:
+          type: string
+          format: email
+        dni:
+          type: string
+        rango:
+          type: string
+          enum: [admin, guardia]
+        estado:
+          type: string
+          enum: [activo, inactivo]
+        puerta_acargo:
+          type: string
+          nullable: true
+        telefono:
+          type: string
+          nullable: true
+
+    Alumno:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: alumno_id_123
+        _identificacion:
+          type: string
+          example: ID123
+        nombre:
+          type: string
+          example: María
+        apellido:
+          type: string
+          example: González
+        dni:
+          type: string
+          example: "87654321"
+        codigo_universitario:
+          type: string
+          example: "20201234"
+        escuela_profesional:
+          type: string
+          example: Ingeniería de Sistemas
+        facultad:
+          type: string
+          example: Facultad de Ciencias
+        siglas_escuela:
+          type: string
+          example: IS
+        siglas_facultad:
+          type: string
+          example: FC
+        estado:
+          type: boolean
+          description: true si está matriculado
+          example: true
+
+    Asistencia:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: asistencia_id_123
+        nombre:
+          type: string
+          example: María
+        apellido:
+          type: string
+          example: González
+        dni:
+          type: string
+          example: "87654321"
+        codigo_universitario:
+          type: string
+          example: "20201234"
+        siglas_facultad:
+          type: string
+          example: FC
+        siglas_escuela:
+          type: string
+          example: IS
+        tipo:
+          type: string
+          enum: [entrada, salida]
+          example: entrada
+        fecha_hora:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00.000Z"
+        entrada_tipo:
+          type: string
+          enum: [entrada, salida]
+          example: entrada
+        puerta:
+          type: string
+          example: Puerta Principal
+        guardia_id:
+          type: string
+          nullable: true
+          example: guardia_id_123
+        guardia_nombre:
+          type: string
+          nullable: true
+          example: Juan Pérez
+        autorizacion_manual:
+          type: boolean
+          default: false
+          example: false
+        razon_decision:
+          type: string
+          nullable: true
+          example: null
+        timestamp_decision:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        coordenadas:
+          type: string
+          nullable: true
+          example: "-12.0464,-77.0428"
+        descripcion_ubicacion:
+          type: string
+          nullable: true
+          example: Campus Principal
+
+    AsistenciaRequest:
+      type: object
+      properties:
+        _id:
+          type: string
+        nombre:
+          type: string
+        apellido:
+          type: string
+        dni:
+          type: string
+        codigo_universitario:
+          type: string
+        siglas_facultad:
+          type: string
+        siglas_escuela:
+          type: string
+        tipo:
+          type: string
+          enum: [entrada, salida]
+        fecha_hora:
+          type: string
+          format: date-time
+        entrada_tipo:
+          type: string
+          enum: [entrada, salida]
+        puerta:
+          type: string
+        guardia_id:
+          type: string
+        guardia_nombre:
+          type: string
+        autorizacion_manual:
+          type: boolean
+        razon_decision:
+          type: string
+        coordenadas:
+          type: string
+        descripcion_ubicacion:
+          type: string
+
+    Facultad:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: facultad_id_123
+        siglas:
+          type: string
+          example: FC
+        nombre:
+          type: string
+          example: Facultad de Ciencias
+
+    Escuela:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: escuela_id_123
+        nombre:
+          type: string
+          example: Ingeniería de Sistemas
+        siglas:
+          type: string
+          example: IS
+        siglas_facultad:
+          type: string
+          example: FC
+
+    Externo:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: externo_id_123
+        nombre:
+          type: string
+          example: Visitante Externo
+        dni:
+          type: string
+          example: "11223344"
+
+    Visita:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: visita_id_123
+        puerta:
+          type: string
+          example: Puerta Principal
+        guardia_nombre:
+          type: string
+          example: Juan Pérez
+        asunto:
+          type: string
+          example: Reunión académica
+        fecha_hora:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00.000Z"
+        nombre:
+          type: string
+          example: Visitante
+        dni:
+          type: string
+          example: "11223344"
+        facultad:
+          type: string
+          example: FC
+
+    VisitaRequest:
+      type: object
+      properties:
+        _id:
+          type: string
+        puerta:
+          type: string
+        guardia_nombre:
+          type: string
+        asunto:
+          type: string
+        fecha_hora:
+          type: string
+          format: date-time
+        nombre:
+          type: string
+        dni:
+          type: string
+        facultad:
+          type: string
+
+    DecisionManual:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: decision_id_123
+        estudiante_id:
+          type: string
+          example: alumno_id_123
+        estudiante_dni:
+          type: string
+          example: "87654321"
+        estudiante_nombre:
+          type: string
+          example: María González
+        guardia_id:
+          type: string
+          example: guardia_id_123
+        guardia_nombre:
+          type: string
+          example: Juan Pérez
+        autorizado:
+          type: boolean
+          example: true
+        razon:
+          type: string
+          example: Estudiante autorizado por administración
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00.000Z"
+        punto_control:
+          type: string
+          example: Puerta Principal
+        tipo_acceso:
+          type: string
+          enum: [entrada, salida]
+          example: entrada
+        datos_estudiante:
+          type: object
+          additionalProperties: true
+
+    DecisionManualRequest:
+      type: object
+      properties:
+        _id:
+          type: string
+        estudiante_id:
+          type: string
+        estudiante_dni:
+          type: string
+        estudiante_nombre:
+          type: string
+        guardia_id:
+          type: string
+        guardia_nombre:
+          type: string
+        autorizado:
+          type: boolean
+        razon:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        punto_control:
+          type: string
+        tipo_acceso:
+          type: string
+          enum: [entrada, salida]
+        datos_estudiante:
+          type: object
+          additionalProperties: true
+
+    Presencia:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: presencia_id_123
+        estudiante_id:
+          type: string
+          example: alumno_id_123
+        estudiante_dni:
+          type: string
+          example: "87654321"
+        estudiante_nombre:
+          type: string
+          example: María González
+        facultad:
+          type: string
+          example: FC
+        escuela:
+          type: string
+          example: IS
+        hora_entrada:
+          type: string
+          format: date-time
+          example: "2025-01-15T08:00:00.000Z"
+        hora_salida:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        punto_entrada:
+          type: string
+          example: Puerta Principal
+        punto_salida:
+          type: string
+          nullable: true
+          example: null
+        esta_dentro:
+          type: boolean
+          default: true
+          example: true
+        guardia_entrada:
+          type: string
+          nullable: true
+          example: guardia_id_123
+        guardia_salida:
+          type: string
+          nullable: true
+          example: null
+        tiempo_en_campus:
+          type: number
+          nullable: true
+          description: Tiempo en milisegundos
+          example: null
+
+    PresenciaUpdateRequest:
+      type: object
+      required:
+        - estudiante_dni
+        - tipo_acceso
+        - punto_control
+        - guardia_id
+      properties:
+        estudiante_dni:
+          type: string
+          description: DNI del estudiante
+          example: "87654321"
+        tipo_acceso:
+          type: string
+          enum: [entrada, salida]
+          description: Tipo de acceso
+          example: entrada
+        punto_control:
+          type: string
+          description: Nombre del punto de control
+          example: Puerta Principal
+        guardia_id:
+          type: string
+          description: ID del guardia que registra
+          example: guardia_id_123
+
+    SesionGuardia:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: uuid-session-token-123
+        guardia_id:
+          type: string
+          example: guardia_id_123
+        guardia_nombre:
+          type: string
+          example: Juan Pérez
+        punto_control:
+          type: string
+          example: Puerta Principal
+        session_token:
+          type: string
+          example: uuid-session-token-123
+        last_activity:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:35:00.000Z"
+        is_active:
+          type: boolean
+          default: true
+          example: true
+        device_info:
+          type: object
+          properties:
+            platform:
+              type: string
+              example: Android
+            device_id:
+              type: string
+              example: device_123
+            app_version:
+              type: string
+              example: "1.0.0"
+        fecha_inicio:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00.000Z"
+        fecha_fin:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    SesionIniciarRequest:
+      type: object
+      required:
+        - guardia_id
+        - guardia_nombre
+        - punto_control
+      properties:
+        guardia_id:
+          type: string
+          example: guardia_id_123
+        guardia_nombre:
+          type: string
+          example: Juan Pérez
+        punto_control:
+          type: string
+          example: Puerta Principal
+        device_info:
+          type: object
+          properties:
+            platform:
+              type: string
+              example: Android
+            device_id:
+              type: string
+              example: device_123
+            app_version:
+              type: string
+              example: "1.0.0"
+
+    SesionResponse:
+      type: object
+      properties:
+        session_token:
+          type: string
+          example: uuid-session-token-123
+        message:
+          type: string
+          example: Sesión iniciada exitosamente
+        session:
+          $ref: '#/components/schemas/SesionGuardia'
+
+    ConflictResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Otro guardia está activo en este punto de control
+        conflict:
+          type: boolean
+          example: true
+        active_guard:
+          type: object
+          properties:
+            guardia_id:
+              type: string
+              example: guardia_id_456
+            guardia_nombre:
+              type: string
+              example: Pedro García
+            session_start:
+              type: string
+              format: date-time
+              example: "2025-01-15T09:00:00.000Z"
+            last_activity:
+              type: string
+              format: date-time
+              example: "2025-01-15T10:30:00.000Z"
+
+    MLDatosHistoricos:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        datos_ml:
+          type: object
+          properties:
+            total_registros:
+              type: integer
+              example: 1500
+            rango_fechas:
+              type: object
+              properties:
+                inicio:
+                  type: string
+                  format: date-time
+                fin:
+                  type: string
+                  format: date-time
+            salidas_por_hora:
+              type: object
+              additionalProperties:
+                type: integer
+            entradas_por_hora:
+              type: object
+              additionalProperties:
+                type: integer
+            patrones_semanales:
+              type: object
+              additionalProperties:
+                type: object
+            salidas_por_facultad:
+              type: object
+              additionalProperties:
+                type: integer
+            tiempo_promedio_campus:
+              type: number
+              example: 6.5
+            estudiantes_presentes:
+              type: integer
+              example: 450
+        metadata:
+          type: object
+          properties:
+            generado_en:
+              type: string
+              format: date-time
+            version_api:
+              type: string
+              example: "1.0"
+            descripcion:
+              type: string
+
+    MLRecomendacionRequest:
+      type: object
+      required:
+        - horario_recomendado
+        - numero_buses_sugeridos
+        - estudiantes_esperados
+      properties:
+        horario_recomendado:
+          type: string
+          description: Horario en formato HH:mm
+          example: "20:00"
+        numero_buses_sugeridos:
+          type: integer
+          example: 3
+        capacidad_estimada:
+          type: integer
+          example: 120
+        estudiantes_esperados:
+          type: integer
+          example: 180
+        porcentaje_ocupacion:
+          type: integer
+          example: 75
+        facultades_principales:
+          type: array
+          items:
+            type: string
+          example: [FC, FI, FA]
+        justificacion:
+          type: string
+          example: Pico de salida histórico a las 20:00
+        datos_historicos_utilizados:
+          type: object
+          additionalProperties: true
+        modelo_version:
+          type: string
+          example: "1.0"
+        confianza_prediccion:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.85
+
+    MLRecomendacionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Recomendación de buses almacenada exitosamente
+        recomendacion:
+          type: object
+          properties:
+            _id:
+              type: string
+            fecha_analisis:
+              type: string
+              format: date-time
+            horario_recomendado:
+              type: string
+            numero_buses_sugeridos:
+              type: integer
+            capacidad_estimada:
+              type: integer
+            estudiantes_esperados:
+              type: integer
+            porcentaje_ocupacion:
+              type: integer
+            facultades_principales:
+              type: array
+              items:
+                type: string
+            justificacion:
+              type: string
+            modelo_version:
+              type: string
+            confianza_prediccion:
+              type: number
+        resumen:
+          type: object
+          properties:
+            horario:
+              type: string
+            buses:
+              type: integer
+            estudiantes:
+              type: integer
+            ocupacion:
+              type: string
+            confianza:
+              type: string
+
+    MLRecomendacionesResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        recomendaciones:
+          type: array
+          items:
+            type: object
+        estadisticas:
+          type: object
+        metadata:
+          type: object
+
+    MLEstadoActual:
+      type: object
+      properties:
+        success:
+          type: boolean
+        estado_actual:
+          type: object
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+            hora_actual:
+              type: integer
+            dia_semana:
+              type: integer
+            presencia:
+              type: object
+            actividad_reciente:
+              type: object
+            contexto:
+              type: object
+            metricas_prediccion:
+              type: object
+        mensaje:
+          type: string
+
+    MLFeedbackRequest:
+      type: object
+      required:
+        - recomendacion_id
+        - horario_real_utilizado
+        - buses_reales_utilizados
+        - estudiantes_reales
+        - efectividad_recomendacion
+      properties:
+        recomendacion_id:
+          type: string
+          example: recomendacion_id_123
+        horario_real_utilizado:
+          type: string
+          example: "20:30"
+        buses_reales_utilizados:
+          type: integer
+          example: 4
+        estudiantes_reales:
+          type: integer
+          example: 200
+        efectividad_recomendacion:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.85
+        comentarios:
+          type: string
+          example: Se necesitaron más buses de lo predicho
+
+    MLFeedbackResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        feedback_id:
+          type: string
+        analisis:
+          type: object
+          properties:
+            precision_prediccion:
+              type: number
+            diferencias_detectadas:
+              type: object
+            mejora_modelo:
+              type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Mensaje de error
+          example: Error al procesar la solicitud
+        details:
+          type: string
+          nullable: true
+          description: Detalles adicionales del error
+          example: null
+
+  responses:
+    BadRequest:
+      description: Solicitud inválida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Faltan campos requeridos
+
+    Unauthorized:
+      description: Credenciales incorrectas
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Credenciales incorrectas
+
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Usuario no encontrado
+
+    InternalServerError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Error en el servidor
+            details: Detalles del error
+
