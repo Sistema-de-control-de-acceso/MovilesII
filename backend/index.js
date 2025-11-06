@@ -4636,11 +4636,13 @@ app.get('/api/buses/efficiency/report', async (req, res) => {
 
 // ==================== ENDPOINTS DE SUGERENCIAS DE BUSES ====================
 
-// Importar servicio de sugerencias de buses
+// Importar servicios de sugerencias y optimización de buses
 const BusSuggestionsService = require('./ml/bus_suggestions_service');
+const BusScheduleOptimizer = require('./ml/bus_schedule_optimizer');
 
-// Instancia de servicio
+// Instancias de servicios
 const busSuggestionsService = new BusSuggestionsService(SugerenciaBus, ViajeBus, Bus);
+const busScheduleOptimizer = new BusScheduleOptimizer(ViajeBus, Bus, SugerenciaBus);
 
 // Endpoints CRUD para Sugerencias
 // Listar sugerencias
@@ -4895,17 +4897,234 @@ app.get('/api/buses/suggestions/impact', async (req, res) => {
     if (busId) filters.busId = busId;
     filters.estado = 'implementada';
 
-    const dashboard = await busSuggestionsService.generateAdoptionDashboard(dateRange, filters);
+    const result = await busSuggestionsService.calculateAdoptionImpact(
+      startDate,
+      endDate,
+      busId || null
+    );
 
     res.json({
       success: true,
-      metricas: dashboard.metricasAdopcion,
-      comparativos: dashboard.comparativos,
-      timestamp: new Date()
+      ...result
     });
   } catch (err) {
     res.status(500).json({ 
       error: 'Error obteniendo métricas de impacto', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE OPTIMIZACIÓN DE HORARIOS ====================
+
+// Analizar patrones de demanda
+app.get('/api/buses/optimization/demand-patterns', async (req, res) => {
+  try {
+    const { ruta, days_of_week, start_date, end_date } = req.query;
+    
+    if (!ruta) {
+      return res.status(400).json({ error: 'ruta es requerido' });
+    }
+
+    const daysOfWeek = days_of_week ? days_of_week.split(',') : null;
+    const dateRange = (start_date && end_date) ? {
+      start: new Date(start_date),
+      end: new Date(end_date)
+    } : null;
+
+    const result = await busScheduleOptimizer.analyzeDemandPatterns(
+      ruta,
+      daysOfWeek,
+      dateRange
+    );
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error analizando patrones de demanda', 
+      details: err.message 
+    });
+  }
+});
+
+// Generar horarios óptimos para una ruta
+app.post('/api/buses/optimization/generate-schedule', async (req, res) => {
+  try {
+    const { ruta, dia_semana, capacidad_bus, ocupacion_objetivo } = req.body;
+    
+    if (!ruta || !dia_semana) {
+      return res.status(400).json({ 
+        error: 'ruta y dia_semana son requeridos' 
+      });
+    }
+
+    const capacidad = capacidad_bus || 50;
+    const ocupacion = ocupacion_objetivo || 80;
+
+    const result = await busScheduleOptimizer.generateOptimalSchedule(
+      ruta,
+      dia_semana,
+      capacidad,
+      ocupacion
+    );
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando horarios óptimos', 
+      details: err.message 
+    });
+  }
+});
+
+// Generar sugerencias de horarios optimizados (múltiples rutas)
+app.post('/api/buses/optimization/generate-suggestions', async (req, res) => {
+  try {
+    const { rutas, dias_semana, ocupacion_objetivo, save_suggestions } = req.body;
+    
+    const ocupacion = ocupacion_objetivo || 80;
+    const save = save_suggestions !== false; // Por defecto guardar
+
+    const result = await busScheduleOptimizer.generateOptimalScheduleSuggestions(
+      rutas || null,
+      dias_semana || null,
+      ocupacion
+    );
+
+    // Guardar sugerencias si se solicita
+    let savedSuggestions = [];
+    if (save && result.suggestions.length > 0) {
+      savedSuggestions = await busScheduleOptimizer.saveSuggestions(
+        result.suggestions,
+        req.user?.id || 'system'
+      );
+    }
+
+    res.json({
+      success: true,
+      ...result,
+      saved_count: savedSuggestions.length
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando sugerencias de horarios', 
+      details: err.message 
+    });
+  }
+});
+
+// Calcular métricas de eficiencia para un horario
+app.get('/api/buses/optimization/schedule-efficiency', async (req, res) => {
+  try {
+    const { ruta, horario_salida, dia_semana, capacidad_bus } = req.query;
+    
+    if (!ruta || !horario_salida || !dia_semana) {
+      return res.status(400).json({ 
+        error: 'ruta, horario_salida y dia_semana son requeridos' 
+      });
+    }
+
+    const capacidad = capacidad_bus ? parseInt(capacidad_bus) : 50;
+
+    const metrics = await busScheduleOptimizer.calculateScheduleEfficiencyMetrics(
+      ruta,
+      horario_salida,
+      dia_semana,
+      capacidad
+    );
+
+    res.json({
+      success: true,
+      metrics
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error calculando métricas de eficiencia', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas de eficiencia del transporte
+app.get('/api/buses/optimization/transport-efficiency', async (req, res) => {
+  try {
+    const { start_date, end_date, ruta } = req.query;
+    
+    const startDate = start_date ? new Date(start_date) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = end_date ? new Date(end_date) : new Date();
+
+    // Obtener viajes en el período
+    const query = {
+      estado: 'completado',
+      fecha_salida: { $gte: startDate, $lte: endDate }
+    };
+    if (ruta) {
+      query.ruta = ruta;
+    }
+
+    const viajes = await ViajeBus.find(query).lean();
+    const buses = await Bus.find({ estado: 'activo' }).lean();
+
+    if (viajes.length === 0) {
+      return res.json({
+        success: true,
+        metrics: {
+          tasaOcupacionPromedio: 0,
+          costoPorPasajero: 0,
+          tiempoViajePromedio: 0,
+          eficienciaGeneral: 0,
+          totalViajes: 0,
+          totalPasajeros: 0,
+          totalCosto: 0
+        }
+      });
+    }
+
+    // Calcular métricas agregadas
+    const totalViajes = viajes.length;
+    const totalPasajeros = viajes.reduce((sum, v) => sum + (v.pasajeros_transportados || 0), 0);
+    const totalCosto = viajes.reduce((sum, v) => sum + (v.costo_operacion || 0), 0);
+    const totalTiempo = viajes.reduce((sum, v) => sum + (v.tiempo_viaje_minutos || 0), 0);
+    const totalOcupacion = viajes.reduce((sum, v) => sum + (v.tasa_ocupacion || 0), 0);
+
+    const capacidadPromedio = buses.length > 0
+      ? buses.reduce((sum, b) => sum + (b.capacidad_maxima || 50), 0) / buses.length
+      : 50;
+
+    const tasaOcupacionPromedio = totalOcupacion / totalViajes;
+    const costoPorPasajero = totalPasajeros > 0 ? totalCosto / totalPasajeros : 0;
+    const tiempoViajePromedio = totalTiempo / totalViajes;
+
+    // Calcular eficiencia general (0-100)
+    const eficienciaGeneral = (
+      (tasaOcupacionPromedio / 100) * 0.5 + // 50% peso en ocupación
+      (1 - Math.min(costoPorPasajero / 10, 1)) * 0.3 + // 30% peso en costo
+      (1 - Math.min(tiempoViajePromedio / 60, 1)) * 0.2 // 20% peso en tiempo
+    ) * 100;
+
+    res.json({
+      success: true,
+      metrics: {
+        tasaOcupacionPromedio: parseFloat(tasaOcupacionPromedio.toFixed(2)),
+        costoPorPasajero: parseFloat(costoPorPasajero.toFixed(2)),
+        tiempoViajePromedio: parseFloat(tiempoViajePromedio.toFixed(2)),
+        eficienciaGeneral: parseFloat(eficienciaGeneral.toFixed(2)),
+        totalViajes,
+        totalPasajeros,
+        totalCosto: parseFloat(totalCosto.toFixed(2)),
+        capacidadPromedio: parseFloat(capacidadPromedio.toFixed(2)),
+        promedioPasajerosPorViaje: parseFloat((totalPasajeros / totalViajes).toFixed(2))
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error calculando métricas de eficiencia del transporte', 
       details: err.message 
     });
   }

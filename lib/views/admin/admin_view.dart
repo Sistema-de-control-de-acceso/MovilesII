@@ -11,6 +11,7 @@ import 'session_config_view.dart';
 import 'historial_view.dart';
 import 'sync_config_view.dart';
 import 'offline_config_view.dart';
+import 'bus_schedule_suggestions_view.dart';
 import '../../widgets/connectivity_status_widget.dart';
 import '../student_status_view.dart';
 import '../matriculation_verification_view.dart';
@@ -527,7 +528,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
             SizedBox(width: 12),
             Expanded(
-              child: Container(), // Espacio vacío para simetría
+              child: CustomButton(
+                text: 'Optimizar Horarios',
+                icon: Icons.schedule,
+                backgroundColor: Colors.deepPurple,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BusScheduleSuggestionsView(),
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
