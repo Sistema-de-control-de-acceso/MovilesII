@@ -8,6 +8,7 @@ import '../models/asistencia_model.dart';
 import '../models/alumno_model.dart';
 import '../models/presencia_model.dart';
 import '../models/decision_manual_model.dart';
+import 'bidirectional_sync_service.dart';
 
 class OfflineSyncService extends ChangeNotifier {
   static final OfflineSyncService _instance = OfflineSyncService._internal();
@@ -85,7 +86,7 @@ class OfflineSyncService extends ChangeNotifier {
     _addLogEntry('🔴 Sincronización automática detenida');
   }
 
-  // Realizar sincronización
+  // Realizar sincronización (usando servicio bidireccional si está disponible)
   Future<bool> performSync({bool forceSync = false}) async {
     if (_isSyncing && !forceSync) {
       _addLogEntry('⚠️ Sincronización ya en curso');
@@ -101,8 +102,47 @@ class OfflineSyncService extends ChangeNotifier {
     _lastSyncError = null;
     notifyListeners();
 
-    _addLogEntry('🔄 Iniciando sincronización...');
+    _addLogEntry('🔄 Iniciando sincronización bidireccional...');
 
+    try {
+      // Intentar usar servicio bidireccional
+      try {
+        final bidirectionalSync = BidirectionalSyncService();
+        await bidirectionalSync.initialize();
+        final result = await bidirectionalSync.performBidirectionalSync(forceSync: forceSync);
+        
+        if (result.success) {
+          _lastSyncTime = DateTime.now();
+          await _updatePendingCount();
+          _addLogEntry('✅ Sincronización bidireccional completada: ${result.syncedCount} sincronizados, ${result.conflictCount} conflictos');
+          
+          if (result.conflictCount > 0) {
+            _addLogEntry('⚠️ ${result.conflictCount} conflictos detectados, revisar resolución');
+          }
+          
+          _isSyncing = false;
+          notifyListeners();
+          return true;
+        } else {
+          throw Exception(result.error ?? 'Error en sincronización bidireccional');
+        }
+      } catch (e) {
+        _addLogEntry('⚠️ Error en sincronización bidireccional, usando método legacy: $e');
+        // Fallback a método legacy
+        return await _performLegacySync();
+      }
+    } catch (e) {
+      _lastSyncError = e.toString();
+      _addLogEntry('❌ Error en sincronización: $e');
+      
+      _isSyncing = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // Método legacy de sincronización (mantener compatibilidad)
+  Future<bool> _performLegacySync() async {
     try {
       // Sincronizar asistencias pendientes
       await _syncPendingAsistencias();
@@ -118,14 +158,14 @@ class OfflineSyncService extends ChangeNotifier {
 
       _lastSyncTime = DateTime.now();
       await _updatePendingCount();
-      _addLogEntry('✅ Sincronización completada exitosamente');
+      _addLogEntry('✅ Sincronización legacy completada exitosamente');
 
       _isSyncing = false;
       notifyListeners();
       return true;
     } catch (e) {
       _lastSyncError = e.toString();
-      _addLogEntry('❌ Error en sincronización: $e');
+      _addLogEntry('❌ Error en sincronización legacy: $e');
       
       _isSyncing = false;
       notifyListeners();

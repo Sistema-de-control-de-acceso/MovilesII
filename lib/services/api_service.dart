@@ -17,6 +17,50 @@ class ApiService {
   // Headers por defecto
   Map<String, String> get _headers => {'Content-Type': 'application/json'};
 
+  // ==================== MÉTODOS GENÉRICOS HTTP ====================
+
+  /// Método GET genérico
+  Future<Map<String, dynamic>> get(String endpoint) async {
+    try {
+      final url = endpoint.startsWith('http') 
+          ? Uri.parse(endpoint)
+          : Uri.parse('${ApiConfig.baseUrl}$endpoint');
+      
+      final response = await http.get(url, headers: _headers);
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
+    }
+  }
+
+  /// Método POST genérico
+  Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
+    try {
+      final url = endpoint.startsWith('http') 
+          ? Uri.parse(endpoint)
+          : Uri.parse('${ApiConfig.baseUrl}$endpoint');
+      
+      final response = await http.post(
+        url,
+        headers: _headers,
+        body: json.encode(body),
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
+    }
+  }
+
   // ==================== ALUMNOS ====================
 
   Future<List<AlumnoModel>> getAlumnos() async {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
@@ -63,6 +64,8 @@ class LocalDatabaseService {
     await _createPresenciaTable(db);
     await _createDecisionesTable(db);
     await _createSyncQueueTable(db);
+    await _createDataVersionsTable(db);
+    await _createConflictsTable(db);
   }
 
   // Actualizar base de datos
@@ -339,6 +342,39 @@ class LocalDatabaseService {
     ''');
   }
 
+  // ==================== TABLA VERSIONADO ====================
+
+  static const String _tableDataVersions = 'data_versions';
+  static const String _tableConflicts = 'conflicts';
+
+  Future<void> _createDataVersionsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableDataVersions (
+        collection_name TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        last_modified TEXT,
+        PRIMARY KEY (collection_name, record_id)
+      )
+    ''');
+  }
+
+  Future<void> _createConflictsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableConflicts (
+        conflict_id TEXT PRIMARY KEY,
+        collection_name TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        client_version INTEGER NOT NULL,
+        server_version INTEGER NOT NULL,
+        server_data TEXT,
+        client_data TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT NOT NULL
+      )
+    ''');
+  }
+
   // ==================== MÉTODOS DE CONVERSIÓN ====================
 
   AlumnoModel _alumnoFromMap(Map<String, dynamic> map) {
@@ -436,6 +472,191 @@ class LocalDatabaseService {
       _tableAsistencias,
       where: 'created_at < ? AND sync_status = ?',
       whereArgs: [cutoffDate.toIso8601String(), 'synced'],
+    );
+  }
+
+  // ==================== MÉTODOS DE VERSIONADO ====================
+
+  /// Obtener versión de un registro
+  Future<int> getRecordVersion(String collectionName, String recordId) async {
+    final db = await database;
+    final result = await db.query(
+      _tableDataVersions,
+      where: 'collection_name = ? AND record_id = ?',
+      whereArgs: [collectionName, recordId],
+    );
+
+    if (result.isEmpty) {
+      return 1; // Versión inicial
+    }
+
+    return result.first['version'] as int;
+  }
+
+  /// Establecer versión de un registro
+  Future<void> setRecordVersion(String collectionName, String recordId, int version) async {
+    final db = await database;
+    await db.insert(
+      _tableDataVersions,
+      {
+        'collection_name': collectionName,
+        'record_id': recordId,
+        'version': version,
+        'last_modified': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Incrementar versión de un registro
+  Future<int> incrementRecordVersion(String collectionName, String recordId) async {
+    final currentVersion = await getRecordVersion(collectionName, recordId);
+    final newVersion = currentVersion + 1;
+    await setRecordVersion(collectionName, recordId, newVersion);
+    return newVersion;
+  }
+
+  // ==================== MÉTODOS DE CONFLICTOS ====================
+
+  /// Guardar conflicto
+  Future<void> saveConflict({
+    required String conflictId,
+    required String collection,
+    required String recordId,
+    required int clientVersion,
+    required int serverVersion,
+    Map<String, dynamic>? serverData,
+    Map<String, dynamic>? clientData,
+  }) async {
+    final db = await database;
+    await db.insert(
+      _tableConflicts,
+      {
+        'conflict_id': conflictId,
+        'collection_name': collection,
+        'record_id': recordId,
+        'client_version': clientVersion,
+        'server_version': serverVersion,
+        'server_data': serverData != null ? jsonEncode(serverData) : null,
+        'client_data': clientData != null ? jsonEncode(clientData) : null,
+        'status': 'pending',
+        'created_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Obtener conflictos pendientes
+  Future<List<Map<String, dynamic>>> getPendingConflicts() async {
+    final db = await database;
+    final result = await db.query(
+      _tableConflicts,
+      where: 'status = ?',
+      whereArgs: ['pending'],
+      orderBy: 'created_at DESC',
+    );
+
+    return result.map((row) {
+      final conflict = Map<String, dynamic>.from(row);
+      if (conflict['server_data'] != null) {
+        conflict['server_data'] = jsonDecode(conflict['server_data'] as String);
+      }
+      if (conflict['client_data'] != null) {
+        conflict['client_data'] = jsonDecode(conflict['client_data'] as String);
+      }
+      return conflict;
+    }).toList();
+  }
+
+  /// Marcar conflicto como resuelto
+  Future<void> markConflictResolved(String conflictId) async {
+    final db = await database;
+    await db.update(
+      _tableConflicts,
+      {'status': 'resolved'},
+      where: 'conflict_id = ?',
+      whereArgs: [conflictId],
+    );
+  }
+
+  // ==================== MÉTODOS ADICIONALES ====================
+
+  /// Obtener presencia pendiente
+  Future<List<PresenciaModel>> getPendingPresencia() async {
+    final db = await database;
+    final result = await db.query(
+      _tablePresencia,
+      where: 'sync_status = ?',
+      whereArgs: ['pending'],
+      orderBy: 'created_at ASC',
+    );
+    return result.map((map) => _presenciaFromMap(map)).toList();
+  }
+
+  /// Guardar presencia
+  Future<void> savePresencia(PresenciaModel presencia, {String syncStatus = 'pending'}) async {
+    final db = await database;
+    await db.insert(
+      _tablePresencia,
+      {
+        'id': presencia.id,
+        'estudiante_id': presencia.estudianteId,
+        'estudiante_dni': presencia.estudianteDni,
+        'estudiante_nombre': presencia.estudianteNombre,
+        'facultad': presencia.facultad,
+        'escuela': presencia.escuela,
+        'hora_entrada': presencia.horaEntrada.toIso8601String(),
+        'hora_salida': presencia.horaSalida?.toIso8601String(),
+        'punto_entrada': presencia.puntoEntrada,
+        'punto_salida': presencia.puntoSalida,
+        'esta_dentro': presencia.estaDentro ? 1 : 0,
+        'guardia_entrada': presencia.guardiaEntrada,
+        'guardia_salida': presencia.guardiaSalida,
+        'tiempo_en_campus': presencia.tiempoEnCampus,
+        'sync_status': syncStatus,
+        'created_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Convertir map a PresenciaModel
+  PresenciaModel _presenciaFromMap(Map<String, dynamic> map) {
+    return PresenciaModel(
+      id: map['id'],
+      estudianteId: map['estudiante_id'],
+      estudianteDni: map['estudiante_dni'],
+      estudianteNombre: map['estudiante_nombre'],
+      facultad: map['facultad'],
+      escuela: map['escuela'],
+      horaEntrada: DateTime.parse(map['hora_entrada']),
+      horaSalida: map['hora_salida'] != null ? DateTime.parse(map['hora_salida']) : null,
+      puntoEntrada: map['punto_entrada'],
+      puntoSalida: map['punto_salida'],
+      estaDentro: map['esta_dentro'] == 1,
+      guardiaEntrada: map['guardia_entrada'],
+      guardiaSalida: map['guardia_salida'],
+      tiempoEnCampus: map['tiempo_en_campus'],
+    );
+  }
+
+  /// Eliminar presencia
+  Future<void> deletePresencia(String recordId) async {
+    final db = await database;
+    await db.delete(
+      _tablePresencia,
+      where: 'id = ?',
+      whereArgs: [recordId],
+    );
+  }
+
+  /// Eliminar asistencia
+  Future<void> deleteAsistencia(String recordId) async {
+    final db = await database;
+    await db.delete(
+      _tableAsistencias,
+      where: 'id = ?',
+      whereArgs: [recordId],
     );
   }
 
