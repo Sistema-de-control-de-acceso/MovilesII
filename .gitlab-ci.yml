@@ -1,0 +1,186 @@
+# GitLab CI Configuration for Load Testing
+
+stages:
+  - test
+  - load-test
+
+variables:
+  NODE_VERSION: "18"
+  MONGODB_IMAGE: "mongo:6"
+  BACKEND_PORT: "3000"
+
+# Cache para node_modules
+cache:
+  paths:
+    - backend/node_modules/
+
+# Template para instalar K6
+.install_k6:
+  script:
+    - sudo gpg -k
+    - sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg
+        --keyserver hkp://keyserver.ubuntu.com:80
+        --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+    - echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+    - sudo apt-get update
+    - sudo apt-get install k6
+
+# Template para setup de datos
+.setup_test_data:
+  script:
+    - cd backend
+    - npm ci
+    - node load-testing/scripts/setup-staging-data.js || echo "Setup data failed, continuing..."
+
+# Template para iniciar servidor
+.start_backend:
+  script:
+    - cd backend
+    - npm start &
+    - sleep 10
+    - curl -f http://localhost:${BACKEND_PORT}/health || exit 1
+  artifacts:
+    when: on_failure
+    paths:
+      - backend/logs/
+    expire_in: 1 day
+
+# Job: Prueba de carga - Peak Hours
+load-test:peak-hours:
+  stage: load-test
+  image: node:${NODE_VERSION}
+  services:
+    - name: ${MONGODB_IMAGE}
+      alias: mongodb
+  variables:
+    MONGODB_URI: "mongodb://mongodb:27017/ASISTENCIA"
+    BASE_URL: "http://localhost:${BACKEND_PORT}"
+    SCENARIO: "peak-hours"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl
+    - .install_k6
+    - .setup_test_data
+  script:
+    - .start_backend
+    - |
+      cd backend/load-testing
+      mkdir -p results
+      k6 run \
+        --env BASE_URL=${BASE_URL} \
+        --out json=results/${SCENARIO}-${CI_PIPELINE_ID}.json \
+        --out csv=results/${SCENARIO}-${CI_PIPELINE_ID}.csv \
+        scenarios/${SCENARIO}.js || true
+    - |
+      if [ -f backend/load-testing/results/${SCENARIO}-${CI_PIPELINE_ID}.json ]; then
+        cd backend/load-testing
+        node scripts/analyze-results.js results/${SCENARIO}-${CI_PIPELINE_ID}.json results/report-${CI_PIPELINE_ID}.json
+      fi
+    - |
+      if [ -f backend/load-testing/results/report-${CI_PIPELINE_ID}.json ]; then
+        cd backend/load-testing
+        node -e "
+          const report = require('./results/report-${CI_PIPELINE_ID}.json');
+          const issues = report.thresholds.issues || [];
+          const critical = issues.filter(i => i.type === 'critical');
+          if (critical.length > 0) {
+            console.error('❌ Critical thresholds failed');
+            process.exit(1);
+          }
+        "
+      fi
+  artifacts:
+    when: always
+    paths:
+      - backend/load-testing/results/*.json
+      - backend/load-testing/results/*.csv
+    reports:
+      junit: backend/load-testing/results/junit-report.xml
+    expire_in: 30 days
+  only:
+    - main
+    - master
+    - develop
+    - merge_requests
+
+# Job: Prueba de carga - Concurrent Users
+load-test:concurrent-users:
+  stage: load-test
+  image: node:${NODE_VERSION}
+  services:
+    - name: ${MONGODB_IMAGE}
+      alias: mongodb
+  variables:
+    MONGODB_URI: "mongodb://mongodb:27017/ASISTENCIA"
+    BASE_URL: "http://localhost:${BACKEND_PORT}"
+    SCENARIO: "concurrent-users"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl
+    - .install_k6
+    - .setup_test_data
+  script:
+    - .start_backend
+    - |
+      cd backend/load-testing
+      mkdir -p results
+      k6 run \
+        --env BASE_URL=${BASE_URL} \
+        --out json=results/${SCENARIO}-${CI_PIPELINE_ID}.json \
+        --out csv=results/${SCENARIO}-${CI_PIPELINE_ID}.csv \
+        scenarios/${SCENARIO}.js || true
+    - |
+      if [ -f backend/load-testing/results/${SCENARIO}-${CI_PIPELINE_ID}.json ]; then
+        cd backend/load-testing
+        node scripts/analyze-results.js results/${SCENARIO}-${CI_PIPELINE_ID}.json results/report-${CI_PIPELINE_ID}.json
+      fi
+  artifacts:
+    when: always
+    paths:
+      - backend/load-testing/results/*.json
+      - backend/load-testing/results/*.csv
+    expire_in: 30 days
+  only:
+    - schedules
+    - web
+  when: manual
+
+# Job: Prueba de stress (solo manual o en schedules)
+load-test:stress:
+  stage: load-test
+  image: node:${NODE_VERSION}
+  services:
+    - name: ${MONGODB_IMAGE}
+      alias: mongodb
+  variables:
+    MONGODB_URI: "mongodb://mongodb:27017/ASISTENCIA"
+    BASE_URL: "http://localhost:${BACKEND_PORT}"
+    SCENARIO: "stress-test"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl
+    - .install_k6
+    - .setup_test_data
+  script:
+    - .start_backend
+    - |
+      cd backend/load-testing
+      mkdir -p results
+      k6 run \
+        --env BASE_URL=${BASE_URL} \
+        --out json=results/${SCENARIO}-${CI_PIPELINE_ID}.json \
+        --out csv=results/${SCENARIO}-${CI_PIPELINE_ID}.csv \
+        scenarios/${SCENARIO}.js || true
+    - |
+      if [ -f backend/load-testing/results/${SCENARIO}-${CI_PIPELINE_ID}.json ]; then
+        cd backend/load-testing
+        node scripts/analyze-results.js results/${SCENARIO}-${CI_PIPELINE_ID}.json results/report-${CI_PIPELINE_ID}.json
+      fi
+  artifacts:
+    when: always
+    paths:
+      - backend/load-testing/results/*.json
+      - backend/load-testing/results/*.csv
+    expire_in: 30 days
+  only:
+    - schedules
+    - web
+  when: manual
+

@@ -1,0 +1,195 @@
+name: Load Testing
+
+on:
+  # Ejecutar en push a main/master
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  # Ejecutar en pull requests
+  pull_request:
+    branches:
+      - main
+      - master
+  # Ejecutar manualmente
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Escenario de prueba'
+        required: true
+        default: 'peak-hours'
+        type: choice
+        options:
+          - peak-hours
+          - concurrent-users
+          - stress-test
+      base_url:
+        description: 'URL base del servidor'
+        required: true
+        default: 'http://localhost:3000'
+  # Ejecutar en schedule (opcional - descomentar para activar)
+  # schedule:
+  #   - cron: '0 2 * * *' # Diario a las 2 AM
+
+jobs:
+  load-test:
+    name: Load Test - ${{ github.event.inputs.scenario || 'peak-hours' }}
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          MONGO_INITDB_DATABASE: ASISTENCIA
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package.json
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Install K6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Setup test data
+        working-directory: ./backend
+        env:
+          MONGODB_URI: mongodb://localhost:27017/ASISTENCIA
+        run: |
+          node load-testing/scripts/setup-staging-data.js || echo "Setup data failed, continuing..."
+
+      - name: Start backend server
+        working-directory: ./backend
+        env:
+          MONGODB_URI: mongodb://localhost:27017/ASISTENCIA
+          NODE_ENV: test
+          PORT: 3000
+        run: |
+          npm start &
+          sleep 10
+          # Verificar que el servidor esté corriendo
+          curl -f http://localhost:3000/health || exit 1
+
+      - name: Run load test
+        working-directory: ./backend/load-testing
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:3000' }}
+          SCENARIO: ${{ github.event.inputs.scenario || 'peak-hours' }}
+        run: |
+          mkdir -p results
+          k6 run \
+            --env BASE_URL=$BASE_URL \
+            --out json=results/${SCENARIO}-${GITHUB_RUN_ID}.json \
+            --out csv=results/${SCENARIO}-${GITHUB_RUN_ID}.csv \
+            scenarios/${SCENARIO}.js || true
+
+      - name: Analyze results
+        working-directory: ./backend/load-testing
+        if: always()
+        run: |
+          if [ -f results/${SCENARIO}-${GITHUB_RUN_ID}.json ]; then
+            node scripts/analyze-results.js results/${SCENARIO}-${GITHUB_RUN_ID}.json results/report-${GITHUB_RUN_ID}.json
+          else
+            echo "No results file found"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results-${{ github.run_id }}
+          path: |
+            backend/load-testing/results/*.json
+            backend/load-testing/results/*.csv
+          retention-days: 30
+
+      - name: Check thresholds
+        working-directory: ./backend/load-testing
+        if: always()
+        run: |
+          if [ -f results/report-${GITHUB_RUN_ID}.json ]; then
+            node -e "
+              const report = require('./results/report-${GITHUB_RUN_ID}.json');
+              const issues = report.thresholds.issues || [];
+              const critical = issues.filter(i => i.type === 'critical');
+              const warnings = issues.filter(i => i.type === 'warning');
+              
+              if (critical.length > 0) {
+                console.error('❌ Critical thresholds failed:');
+                critical.forEach(i => console.error('  -', i.message));
+                process.exit(1);
+              }
+              
+              if (warnings.length > 0) {
+                console.warn('⚠️  Warning thresholds:');
+                warnings.forEach(i => console.warn('  -', i.message));
+              }
+              
+              if (issues.length === 0) {
+                console.log('✅ All thresholds passed');
+              }
+            "
+          else
+            echo "⚠️  No report file found, skipping threshold check"
+          fi
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = './backend/load-testing/results/report-${process.env.GITHUB_RUN_ID}.json';
+            
+            if (fs.existsSync(path)) {
+              const report = JSON.parse(fs.readFileSync(path, 'utf8'));
+              const body = `## 📊 Load Test Results
+              
+              **Scenario:** ${process.env.SCENARIO || 'peak-hours'}
+              
+              ### Performance Metrics
+              - **P50:** ${report.performance.responseTime.p50}
+              - **P95:** ${report.performance.responseTime.p95}
+              - **P99:** ${report.performance.responseTime.p99}
+              - **Success Rate:** ${report.summary.successRate}
+              
+              ### Thresholds
+              ${report.thresholds.passed ? '✅ All thresholds passed' : '❌ Some thresholds failed'}
+              
+              ${report.thresholds.issues.length > 0 ? '**Issues:**\n' + report.thresholds.issues.map(i => `- ${i.type}: ${i.message}`).join('\n') : ''}
+              
+              [View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+              `;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
