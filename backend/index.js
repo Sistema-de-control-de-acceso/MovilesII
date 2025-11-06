@@ -535,14 +535,33 @@ app.get('/usuarios', async (req, res) => {
   }
 });
 
+// Importar servicio de notificaciones
+const NotificationService = require('./services/notification_service');
+const notificationService = new NotificationService();
+
 // Ruta para crear usuario con contraseña encriptada
 app.post('/usuarios', async (req, res) => {
   try {
-    const { nombre, apellido, dni, email, password, rango, puerta_acargo, telefono } = req.body;
+    const { nombre, apellido, dni, email, password, rango, puerta_acargo, telefono, send_notification } = req.body;
     
     // Validar campos requeridos
     if (!nombre || !apellido || !dni || !email || !password) {
       return res.status(400).json({ error: 'Faltan campos requeridos' });
+    }
+
+    // Validar formato de DNI (8 dígitos)
+    if (!/^\d{8}$/.test(dni)) {
+      return res.status(400).json({ error: 'DNI debe tener 8 dígitos' });
+    }
+
+    // Validar formato de email
+    if (!/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(email)) {
+      return res.status(400).json({ error: 'Email inválido' });
+    }
+
+    // Validar contraseña (mínimo 8 caracteres)
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
     }
 
     // Crear usuario (la contraseña se hashea automáticamente)
@@ -559,17 +578,63 @@ app.post('/usuarios', async (req, res) => {
 
     await user.save();
     
+    // Enviar notificación si está habilitada
+    if (send_notification !== false) {
+      try {
+        await notificationService.sendCredentialsToUser({
+          email,
+          password, // Enviar contraseña antes de hashearla (solo en creación)
+          nombre: `${nombre} ${apellido}`
+        });
+      } catch (notifError) {
+        // No fallar la creación si falla la notificación
+        console.error('Error enviando notificación:', notifError);
+      }
+    }
+    
     // Responder sin la contraseña
     const userResponse = user.toObject();
     delete userResponse.password;
     
-    res.status(201).json(userResponse);
+    res.status(201).json({
+      ...userResponse,
+      credentials_sent: send_notification !== false
+    });
   } catch (err) {
     if (err.code === 11000) {
       res.status(400).json({ error: 'DNI o email ya existe' });
     } else {
-      res.status(500).json({ error: 'Error al crear usuario' });
+      res.status(500).json({ error: 'Error al crear usuario', details: err.message });
     }
+  }
+});
+
+// Endpoint para enviar notificación a usuario existente
+app.post('/usuarios/:id/notify', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email, password, nombre } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    await notificationService.sendCredentialsToUser({
+      email: email || user.email,
+      password: password || 'Contacte al administrador',
+      nombre: nombre || `${user.nombre} ${user.apellido}`
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Notificación enviada exitosamente' 
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error enviando notificación', 
+      details: err.message 
+    });
   }
 });
 
