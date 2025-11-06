@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../viewmodels/student_status_viewmodel.dart';
 import '../widgets/status_widgets.dart';
 import '../widgets/connectivity_status_widget.dart';
+import '../widgets/student_basic_info_widget.dart';
+import '../models/alumno_model.dart';
 
 class StudentStatusDetailView extends StatefulWidget {
   final String codigoUniversitario;
@@ -125,6 +127,9 @@ class _StudentStatusDetailViewState extends State<StudentStatusDetailView>
   }
 
   Widget _buildStudentHeader(studentStatus) {
+    // Convertir studentStatus a AlumnoModel para usar el widget
+    final alumno = _convertToAlumnoModel(studentStatus);
+    
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -136,65 +141,14 @@ class _StudentStatusDetailViewState extends State<StudentStatusDetailView>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 30,
-                backgroundColor: studentStatus.isActive ? Colors.green : Colors.red,
-                child: Text(
-                  studentStatus.nombreCompleto.substring(0, 1).toUpperCase(),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      studentStatus.nombreCompleto,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                    Text(
-                      'Código: ${studentStatus.codigoUniversitario}',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                    Text(
-                      'DNI: ${studentStatus.dni}',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                    Text(
-                      '${studentStatus.facultad} - ${studentStatus.escuela}',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: studentStatus.isActive ? Colors.green[100] : Colors.red[100],
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  studentStatus.isActive ? 'Activo' : 'Inactivo',
-                  style: TextStyle(
-                    color: studentStatus.isActive ? Colors.green[700] : Colors.red[700],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
+          // Usar el nuevo widget de información básica
+          StudentBasicInfoWidget(
+            estudiante: alumno,
+            showStatusBadge: true,
+            padding: EdgeInsets.zero,
           ),
           SizedBox(height: 12),
+          // Información adicional de presencia
           Row(
             children: [
               Icon(
@@ -204,7 +158,7 @@ class _StudentStatusDetailViewState extends State<StudentStatusDetailView>
               ),
               SizedBox(width: 8),
               Text(
-                studentStatus.estadoPresencia,
+                studentStatus.estadoPresencia ?? (studentStatus.estaEnCampus ? 'En Campus' : 'Fuera del Campus'),
                 style: TextStyle(
                   fontWeight: FontWeight.w500,
                   color: studentStatus.estaEnCampus ? Colors.green[700] : Colors.red[700],
@@ -213,7 +167,7 @@ class _StudentStatusDetailViewState extends State<StudentStatusDetailView>
               if (studentStatus.estaEnCampus && studentStatus.tiempoEnCampus != null) ...[
                 SizedBox(width: 16),
                 Text(
-                  'Tiempo en campus: ${studentStatus.tiempoEnCampusFormateado}',
+                  'Tiempo en campus: ${studentStatus.tiempoEnCampusFormateado ?? ''}',
                   style: TextStyle(color: Colors.grey[600]),
                 ),
               ],
@@ -221,6 +175,30 @@ class _StudentStatusDetailViewState extends State<StudentStatusDetailView>
           ),
         ],
       ),
+    );
+  }
+
+  // Helper para convertir studentStatus a AlumnoModel
+  AlumnoModel _convertToAlumnoModel(dynamic studentStatus) {
+    // Extraer nombre y apellido del nombre completo
+    final nombreCompleto = studentStatus.nombreCompleto ?? '';
+    final partesNombre = nombreCompleto.split(' ');
+    final nombre = partesNombre.isNotEmpty ? partesNombre[0] : '';
+    final apellido = partesNombre.length > 1 ? partesNombre.sublist(1).join(' ') : '';
+
+    return AlumnoModel(
+      id: studentStatus.id ?? studentStatus.estudianteId ?? '',
+      identificacion: studentStatus.identificacion ?? '',
+      nombre: nombre,
+      apellido: apellido,
+      dni: studentStatus.dni ?? '',
+      codigoUniversitario: studentStatus.codigoUniversitario ?? '',
+      escuelaProfesional: studentStatus.escuela ?? studentStatus.escuelaProfesional ?? '',
+      facultad: studentStatus.facultad ?? '',
+      siglasEscuela: studentStatus.siglasEscuela ?? '',
+      siglasFacultad: studentStatus.siglasFacultad ?? '',
+      estado: studentStatus.isActive ?? studentStatus.estado ?? false,
+      fotoUrl: studentStatus.fotoUrl,
     );
   }
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../viewmodels/students_on_campus_viewmodel.dart';
 import '../widgets/status_widgets.dart';
+import '../widgets/student_basic_info_widget.dart';
+import '../models/alumno_model.dart';
 
 class StudentsOnCampusView extends StatefulWidget {
   @override
@@ -338,82 +340,76 @@ class _StudentsOnCampusViewState extends State<StudentsOnCampusView> {
   }
 
   Widget _buildStudentCard(EstudianteEnCampus estudiante) {
-    return Card(
-      margin: EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Colors.blue[100],
-          child: Icon(Icons.person, color: Colors.blue[700]),
-        ),
-        title: Text(
-          estudiante.nombre,
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(height: 4),
-            Text('DNI: ${estudiante.dni}'),
-            Text('${estudiante.facultad} - ${estudiante.escuela}'),
-            SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
-                SizedBox(width: 4),
-                Text(
-                  estudiante.tiempoEnCampusFormateado,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 2),
-            Row(
-              children: [
-                Icon(Icons.location_on, size: 14, color: Colors.grey[600]),
-                SizedBox(width: 4),
-                Text(
-                  'Entrada: ${estudiante.puntoEntrada}',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 2),
-            Row(
-              children: [
-                Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
-                SizedBox(width: 4),
-                Text(
-                  'Desde: ${_formatDateTime(estudiante.horaEntrada)}',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        trailing: Container(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.green[100],
-            borderRadius: BorderRadius.circular(12),
+    // Convertir EstudianteEnCampus a AlumnoModel para usar el widget
+    final alumno = _convertEstudianteEnCampusToAlumno(estudiante);
+    
+    return Container(
+      margin: EdgeInsets.only(bottom: 12),
+      child: Column(
+        children: [
+          // Usar el widget compacto de información básica
+          StudentBasicInfoCompactWidget(
+            estudiante: alumno,
+            onTap: null, // No hay acción al tocar en esta vista
           ),
-          child: Text(
-            'En Campus',
-            style: TextStyle(
-              color: Colors.green[700],
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+          // Información adicional de presencia
+          Container(
+            margin: EdgeInsets.only(top: 8),
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.green[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.access_time, size: 16, color: Colors.grey[700]),
+                    SizedBox(width: 8),
+                    Text(
+                      'Tiempo en campus: ${estudiante.tiempoEnCampusFormateado}',
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.location_on, size: 16, color: Colors.grey[700]),
+                    SizedBox(width: 8),
+                    Text(
+                      'Punto de entrada: ${estudiante.puntoEntrada}',
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.schedule, size: 16, color: Colors.grey[700]),
+                    SizedBox(width: 8),
+                    Text(
+                      'Desde: ${_formatDateTime(estudiante.horaEntrada)}',
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -478,6 +474,28 @@ class _StudentsOnCampusViewState extends State<StudentsOnCampusView> {
           ),
         ],
       ),
+    );
+  }
+
+  // Helper para convertir EstudianteEnCampus a AlumnoModel
+  AlumnoModel _convertEstudianteEnCampusToAlumno(EstudianteEnCampus estudiante) {
+    // Extraer nombre y apellido del nombre completo
+    final partesNombre = estudiante.nombre.split(' ');
+    final nombre = partesNombre.isNotEmpty ? partesNombre[0] : '';
+    final apellido = partesNombre.length > 1 ? partesNombre.sublist(1).join(' ') : '';
+
+    return AlumnoModel(
+      id: estudiante.estudianteId,
+      identificacion: estudiante.dni,
+      nombre: nombre,
+      apellido: apellido,
+      dni: estudiante.dni,
+      codigoUniversitario: estudiante.estudianteId, // Usar estudianteId como código
+      escuelaProfesional: estudiante.escuela,
+      facultad: estudiante.facultad,
+      siglasEscuela: '', // No disponible en EstudianteEnCampus
+      siglasFacultad: '', // No disponible en EstudianteEnCampus
+      estado: true, // Si está en campus, está activo
     );
   }
 
