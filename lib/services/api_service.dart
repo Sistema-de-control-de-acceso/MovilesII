@@ -9,6 +9,8 @@ import '../models/decision_manual_model.dart';
 import '../models/presencia_model.dart';
 import '../config/api_config.dart';
 import 'logging_service.dart';
+import 'monitoring_service.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -65,24 +67,60 @@ class ApiService {
         durationMs: duration,
       );
 
+      // Reportar latencia
+      MonitoringService().reportLatency('GET_$endpoint', duration);
+
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
+        // Reportar error rate
+        MonitoringService().reportErrorRate(1.0);
+        
         _logging.error(
           'Error HTTP en GET $endpoint',
           error: Exception('HTTP ${response.statusCode}: ${response.body}'),
           metadata: {'statusCode': response.statusCode, 'body': response.body},
         );
+        
+        // Capturar en Sentry
+        await MonitoringService().captureException(
+          Exception('HTTP ${response.statusCode}'),
+          extra: {
+            'endpoint': endpoint,
+            'statusCode': response.statusCode,
+            'method': 'GET',
+          },
+          level: response.statusCode >= 500 ? SentryLevel.error : SentryLevel.warning,
+        );
+        
         throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
       }
     } catch (e, stackTrace) {
       final duration = DateTime.now().difference(startTime).inMilliseconds;
+      
+      // Reportar error rate y latencia
+      MonitoringService().reportErrorRate(1.0);
+      MonitoringService().reportLatency('GET_$endpoint', duration);
+      
       _logging.error(
         'Error de conexión en GET $endpoint',
         error: e,
         stackTrace: stackTrace,
         metadata: {'durationMs': duration},
       );
+      
+      // Capturar en Sentry
+      await MonitoringService().captureException(
+        e,
+        stackTrace: stackTrace,
+        extra: {
+          'endpoint': endpoint,
+          'method': 'GET',
+          'durationMs': duration,
+        },
+        level: SentryLevel.error,
+      );
+      
       throw Exception('Error de conexión: $e');
     }
   }

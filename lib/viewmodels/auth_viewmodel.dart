@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import '../models/usuario_model.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart';
 import '../services/logging_service.dart';
+import '../services/monitoring_service.dart';
 
 class AuthViewModel extends ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -45,11 +47,27 @@ class AuthViewModel extends ChangeNotifier {
         'rango': _currentUser?.rango
       });
 
+      // Configurar usuario en monitoreo
+      MonitoringService().setUser(
+        _currentUser?.id,
+        email: email,
+        username: _currentUser?.nombre,
+      );
+
       _setLoading(false);
       notifyListeners();
       return true;
     } catch (e, stackTrace) {
       _logging.error('Error en login', error: e, stackTrace: stackTrace, metadata: {'email': email});
+      
+      // Capturar error en monitoreo
+      await MonitoringService().captureException(
+        e,
+        stackTrace: stackTrace,
+        extra: {'email': email, 'operation': 'login'},
+        level: SentryLevel.error,
+      );
+      
       _setError(e.toString());
       _setLoading(false);
       return false;
@@ -60,6 +78,10 @@ class AuthViewModel extends ChangeNotifier {
   void logout() {
     final userId = _currentUser?.id;
     _logging.info('Logout', metadata: {'userId': userId});
+    
+    // Limpiar contexto de monitoreo
+    MonitoringService().clearContext();
+    
     _sessionService.endSession();
     _currentUser = null;
     _logging.setUserId(null);

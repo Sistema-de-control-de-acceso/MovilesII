@@ -3886,6 +3886,15 @@ app.get('/health', async (req, res) => {
 const HealthMonitoringService = require('./services/health_monitoring_service');
 const healthMonitoring = new HealthMonitoringService();
 
+// Servicio de alertas para app mobile
+const MobileAlertService = require('./services/mobile_alert_service');
+const mobileAlertService = new MobileAlertService();
+
+// Rutas de monitoreo mobile
+const { router: mobileMonitoringRouter, setMobileAlertService } = require('./routes/mobile-monitoring');
+setMobileAlertService(mobileAlertService);
+app.use('/api/mobile/monitoring', mobileMonitoringRouter);
+
 // Endpoint de salud detallado con métricas completas
 app.get('/health/detailed', async (req, res) => {
   const requestLogger = req.logger || logger;
