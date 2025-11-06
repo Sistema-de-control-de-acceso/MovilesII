@@ -1235,8 +1235,67 @@ Las pruebas de carga están integradas en CI/CD. Ver `backend/load-testing/CI_CD
 ### Próximos Pasos
 
 1. ✅ **Automatizar en CI/CD**: Integrado (ver `CI_CD_INTEGRATION.md`)
-2. **Alertas automáticas**: Notificar cuando thresholds fallen
+2. ✅ **Alertas automáticas**: Integrado para app mobile (ver `docs/MOBILE_MONITORING.md`)
 3. **Dashboards**: Visualización en tiempo real
 4. **Comparación histórica**: Comparar resultados entre ejecuciones
 5. **Optimización continua**: Implementar mejoras basadas en resultados
+
+## 📱 Monitoreo y Alertas para App Mobile
+
+Sistema completo de monitoreo y alertas para la aplicación mobile en staging.
+
+### Características
+
+- ✅ Métricas clave (crashes, ANR, latencia, error rate) reportadas a sistema de monitoring
+- ✅ Alertas mínimas configuradas (aumento de crash rate, error rate > umbral)
+- ✅ Pruebas que disparan alertas en staging y validan notificaciones
+- ✅ Dashboard básico disponible para el equipo
+
+### Herramientas
+
+- **Sentry**: Crashes, errores, performance, ANR detection
+- **Backend Monitoring**: Sistema de alertas integrado
+- **Mobile Alert Service**: Servicio específico para métricas mobile
+
+### Configuración Rápida
+
+#### Flutter
+
+1. Configurar DSN de Sentry en `lib/config/monitoring_config.dart`
+2. O usar variables de entorno:
+   ```bash
+   flutter run --dart-define=SENTRY_DSN=your_dsn --dart-define=ENVIRONMENT=staging
+   ```
+
+#### Backend
+
+Los endpoints están disponibles en `/api/mobile/monitoring/`:
+- `POST /crash` - Reportar crash
+- `POST /error` - Reportar error
+- `POST /latency` - Reportar latencia
+- `POST /anr` - Reportar ANR
+- `GET /metrics` - Obtener métricas
+- `POST /thresholds` - Configurar umbrales
+
+### Dashboard
+
+Acceso: `http://localhost:3000/dashboard/mobile-monitoring.html`
+
+### Umbrales de Alerta
+
+- **Crash Rate**: > 1% de sesiones
+- **Error Rate**: > 5% de requests
+- **Latency P95**: > 2 segundos
+- **ANR**: > 5 por hora
+
+### Pruebas
+
+```bash
+# Disparar alertas para pruebas
+node backend/scripts/trigger-mobile-alerts.js all
+```
+
+### Documentación Completa
+
+Ver `docs/MOBILE_MONITORING.md` para documentación detallada.
 
