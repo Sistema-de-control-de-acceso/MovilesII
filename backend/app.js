@@ -34,6 +34,7 @@ require('./models/Presencia');
 require('./models/PuntoControl');
 require('./models/Asignacion');
 require('./models/Bus');
+require('./models/SugerenciaBus');
 
 // Importar todas las rutas desde index.js
 // Nota: En producción, las rutas están en index.js
