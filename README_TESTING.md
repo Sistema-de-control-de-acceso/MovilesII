@@ -699,3 +699,295 @@ Los tests verifican:
 5. **Usar rate limiting por IP** para endpoints públicos
 6. **Usar rate limiting por usuario** para endpoints autenticados (futuro)
 
+## 🏥 Monitoreo de Salud del Sistema
+
+El sistema implementa monitoreo completo de salud en tiempo real para detectar problemas antes de que afecten a usuarios.
+
+### Características
+
+- **Dashboard de métricas**: CPU, memoria, disco, base de datos
+- **Alertas automáticas**: Configurables con umbrales personalizables
+- **Historial de incidentes**: Registro completo de problemas detectados
+- **Métricas de performance**: API, queries, conexiones
+
+### Endpoints Disponibles
+
+#### GET /health/detailed
+Obtiene métricas detalladas del sistema.
+
+**Respuesta**:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:45.123Z",
+  "system": {
+    "status": "healthy",
+    "metrics": {
+      "cpu": {
+        "process": { "usage": 15.5, "user": 2.3, "system": 1.2 },
+        "system": { "loadPercent": 25.0, "cores": 4, "loadAverage": {...} }
+      },
+      "memory": {
+        "system": { "totalMB": 8192, "usedMB": 4096, "usagePercent": 50.0 },
+        "process": { "heapUsed": 128, "heapTotal": 256, "heapUsagePercent": 50.0 }
+      },
+      "disk": { "platform": "linux", "uptime": {...} },
+      "process": { "uptime": {...}, "pid": 12345, "version": "v18.0.0" }
+    },
+    "issues": []
+  },
+  "database": {
+    "status": "healthy",
+    "metrics": {
+      "connection": { "isConnected": true, "stateName": "connected" },
+      "stats": { "connections": {...}, "operations": {...} },
+      "collections": { "totalCollections": 10, "collections": [...] },
+      "slowQueries": { "queries": [], "total": 0, "stats": {...} }
+    },
+    "issues": []
+  },
+  "issues": [],
+  "summary": {
+    "totalIssues": 0,
+    "criticalIssues": 0,
+    "warnings": 0
+  }
+}
+```
+
+#### GET /health/incidents
+Obtiene historial de incidentes.
+
+**Parámetros**:
+- `limit`: Número máximo de incidentes (default: 50)
+- `status`: Filtrar por estado (healthy, degraded, unhealthy)
+- `resolved`: Filtrar por resuelto (true/false)
+- `since`: Filtrar desde fecha (ISO format)
+
+**Ejemplo**:
+```bash
+GET /health/incidents?limit=20&status=degraded&resolved=false
+```
+
+#### GET /health/incidents/stats
+Obtiene estadísticas de incidentes.
+
+**Parámetros**:
+- `hours`: Período en horas (default: 24)
+
+**Respuesta**:
+```json
+{
+  "period": "24 hours",
+  "since": "2024-01-14T10:30:45.123Z",
+  "stats": {
+    "total": 5,
+    "byStatus": { "healthy": 0, "degraded": 3, "unhealthy": 2 },
+    "bySeverity": { "critical": 2, "warning": 3 },
+    "resolved": 4,
+    "unresolved": 1
+  }
+}
+```
+
+#### POST /health/incidents/:id/resolve
+Marca un incidente como resuelto.
+
+#### GET /health/thresholds
+Obtiene umbrales de alerta actuales.
+
+#### POST /health/thresholds
+Configura umbrales de alerta.
+
+**Body**:
+```json
+{
+  "cpu": { "warning": 80, "critical": 95 },
+  "memory": { "warning": 80, "critical": 95 },
+  "heap": { "warning": 80, "critical": 95 },
+  "dbConnections": { "warning": 50, "critical": 100 },
+  "slowQueries": { "warning": 5, "critical": 20 }
+}
+```
+
+#### GET /health/summary
+Obtiene resumen completo de salud (incluye métricas, incidentes, alertas).
+
+#### GET /health/alerts
+Obtiene historial de alertas enviadas.
+
+**Parámetros**:
+- `limit`: Número máximo de alertas (default: 50)
+- `type`: Filtrar por tipo (cpu, memory, database, etc.)
+- `severity`: Filtrar por severidad (warning, critical)
+- `since`: Filtrar desde fecha (ISO format)
+
+### Dashboard de Salud
+
+Acceso al dashboard web:
+```
+http://localhost:3000/dashboard/health.html
+```
+
+**Características**:
+- Métricas en tiempo real
+- Auto-actualización cada 30 segundos
+- Gráficos de progreso visuales
+- Lista de problemas detectados
+- Historial de incidentes
+
+### Umbrales de Alerta por Defecto
+
+```javascript
+{
+  cpu: { warning: 80%, critical: 95% },
+  memory: { warning: 80%, critical: 95% },
+  heap: { warning: 80%, critical: 95% },
+  dbConnections: { warning: 50, critical: 100 },
+  slowQueries: { warning: 5, critical: 20 }
+}
+```
+
+### Métricas Disponibles
+
+#### Sistema
+- **CPU**: Uso del proceso, carga del sistema, núcleos
+- **Memoria**: Sistema (total, usado, libre), Proceso (heap, RSS)
+- **Disco**: Plataforma, arquitectura, uptime
+- **Proceso**: PID, versión Node.js, uptime
+
+#### Base de Datos
+- **Conexión**: Estado, host, puerto, nombre BD
+- **Estadísticas**: Conexiones activas, operaciones, red
+- **Colecciones**: Conteo, tamaño, índices
+- **Queries Lentas**: Historial, estadísticas
+
+### Alertas Automáticas
+
+El sistema envía alertas automáticamente cuando:
+- CPU excede umbrales configurados
+- Memoria excede umbrales configurados
+- Base de datos se desconecta
+- Se detectan queries lentas en exceso
+
+**Canales de alerta**:
+- **Log**: Siempre activo (registra en sistema de logging)
+- **Email**: Configurable (requiere configuración adicional)
+
+### Tests
+
+#### Tests Unitarios
+
+```bash
+cd backend
+npm test -- health_monitoring.test.js
+```
+
+#### Tests E2E
+
+```bash
+cd backend
+npm run test:e2e -- health_monitoring.e2e.test.js
+```
+
+Los tests verifican:
+- ✅ Obtención de métricas del sistema
+- ✅ Obtención de métricas de BD
+- ✅ Detección de problemas
+- ✅ Registro de incidentes
+- ✅ Envío de alertas
+- ✅ Historial de incidentes
+- ✅ Configuración de umbrales
+
+### Configuración
+
+#### Variables de Entorno
+
+```env
+# No requiere configuración adicional
+# Los umbrales se configuran vía API o código
+```
+
+#### Configuración Programática
+
+```javascript
+const healthMonitoring = require('./services/health_monitoring_service');
+
+// Configurar umbrales
+healthMonitoring.setAlertThresholds({
+  cpu: { warning: 70, critical: 90 },
+  memory: { warning: 75, critical: 90 }
+});
+
+// Registrar canal de alerta personalizado
+const { EmailAlertChannel } = require('./services/alert_service');
+healthMonitoring.alertService.registerChannel(
+  new EmailAlertChannel({ to: 'admin@example.com' })
+);
+```
+
+### Queries Útiles
+
+#### Verificar salud del sistema
+
+```bash
+curl http://localhost:3000/health/detailed
+```
+
+#### Obtener incidentes críticos
+
+```bash
+curl "http://localhost:3000/health/incidents?status=unhealthy&limit=10"
+```
+
+#### Obtener estadísticas de últimas 48 horas
+
+```bash
+curl "http://localhost:3000/health/incidents/stats?hours=48"
+```
+
+#### Configurar umbrales
+
+```bash
+curl -X POST http://localhost:3000/health/thresholds \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cpu": { "warning": 70, "critical": 90 },
+    "memory": { "warning": 75, "critical": 90 }
+  }'
+```
+
+### Troubleshooting
+
+#### Las métricas no aparecen
+
+1. Verificar que los servicios estén inicializados:
+   ```javascript
+   // En index.js debe estar:
+   const HealthMonitoringService = require('./services/health_monitoring_service');
+   const healthMonitoring = new HealthMonitoringService();
+   ```
+
+2. Verificar que los endpoints estén registrados
+
+#### Las alertas no se envían
+
+1. Verificar que los canales estén registrados
+2. Verificar umbrales configurados
+3. Revisar logs para errores de envío
+
+#### Dashboard no carga
+
+1. Verificar que el archivo existe: `backend/public/dashboard/health.html`
+2. Verificar que el servidor esté sirviendo archivos estáticos
+3. Revisar consola del navegador para errores
+
+### Mejores Prácticas
+
+1. **Monitorear regularmente**: Revisar dashboard diariamente
+2. **Configurar alertas**: Establecer umbrales apropiados según carga esperada
+3. **Revisar incidentes**: Resolver incidentes críticos inmediatamente
+4. **Ajustar umbrales**: Basarse en métricas históricas reales
+5. **Integrar con sistemas externos**: Conectar con sistemas de monitoreo (Datadog, New Relic, etc.)
+6. **Automatizar respuestas**: Configurar acciones automáticas para incidentes críticos
+

@@ -3852,7 +3852,7 @@ app.get('/ml/update/config', async (req, res) => {
   }
 });
 
-// Endpoint de salud del sistema
+// Endpoint de salud del sistema (básico)
 app.get('/health', async (req, res) => {
   try {
     // Verificar conexión a BD
@@ -3878,6 +3878,194 @@ app.get('/health', async (req, res) => {
       status: 'unhealthy', 
       error: err.message,
       timestamp: new Date()
+    });
+  }
+});
+
+// Servicio de monitoreo de salud
+const HealthMonitoringService = require('./services/health_monitoring_service');
+const healthMonitoring = new HealthMonitoringService();
+
+// Endpoint de salud detallado con métricas completas
+app.get('/health/detailed', async (req, res) => {
+  const requestLogger = req.logger || logger;
+  
+  try {
+    const health = await healthMonitoring.getDetailedHealth();
+    
+    // Status code según salud
+    const statusCode = health.status === 'unhealthy' ? 503 : 
+                      health.status === 'degraded' ? 200 : 200;
+    
+    requestLogger.info('Health check detallado', {
+      status: health.status,
+      issues: health.summary?.totalIssues || 0
+    });
+    
+    res.status(statusCode).json(health);
+  } catch (err) {
+    requestLogger.error('Error en health check detallado', err);
+    res.status(500).json({
+      status: 'unhealthy',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Endpoint para obtener historial de incidentes
+app.get('/health/incidents', async (req, res) => {
+  const requestLogger = req.logger || logger;
+  
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const filters = {
+      status: req.query.status,
+      resolved: req.query.resolved === 'true' ? true : 
+                req.query.resolved === 'false' ? false : undefined,
+      since: req.query.since
+    };
+
+    const history = healthMonitoring.getIncidentHistory(limit, filters);
+    
+    requestLogger.debug('Consulta de historial de incidentes', { limit, filters });
+    
+    res.json(history);
+  } catch (err) {
+    requestLogger.error('Error obteniendo historial de incidentes', err);
+    res.status(500).json({
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Endpoint para obtener estadísticas de incidentes
+app.get('/health/incidents/stats', async (req, res) => {
+  const requestLogger = req.logger || logger;
+  
+  try {
+    const sinceHours = parseInt(req.query.hours) || 24;
+    const stats = healthMonitoring.getIncidentStats(sinceHours);
+    
+    res.json(stats);
+  } catch (err) {
+    requestLogger.error('Error obteniendo estadísticas de incidentes', err);
+    res.status(500).json({
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Endpoint para resolver incidente
+app.post('/health/incidents/:id/resolve', async (req, res) => {
+  const requestLogger = req.logger || logger;
+  
+  try {
+    const { id } = req.params;
+    const incident = healthMonitoring.resolveIncident(id);
+    
+    if (incident) {
+      requestLogger.info('Incidente resuelto manualmente', { incidentId: id });
+      res.json(incident);
+    } else {
+      res.status(404).json({
+        error: 'Incidente no encontrado',
+        incidentId: id
+      });
+    }
+  } catch (err) {
+    requestLogger.error('Error resolviendo incidente', err);
+    res.status(500).json({
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Endpoint para configurar umbrales de alerta
+app.post('/health/thresholds', async (req, res) => {
+  const requestLogger = req.logger || logger;
+  
+  try {
+    // Verificar que el usuario sea admin (si hay autenticación)
+    // Por ahora, permitir sin autenticación en desarrollo
+    
+    const thresholds = req.body;
+    healthMonitoring.setAlertThresholds(thresholds);
+    
+    requestLogger.info('Umbrales de alerta actualizados', { thresholds });
+    
+    res.json({
+      success: true,
+      thresholds: healthMonitoring.getAlertThresholds(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    requestLogger.error('Error actualizando umbrales', err);
+    res.status(500).json({
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Endpoint para obtener umbrales de alerta
+app.get('/health/thresholds', async (req, res) => {
+  try {
+    const thresholds = healthMonitoring.getAlertThresholds();
+    res.json({
+      thresholds,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Endpoint para obtener resumen completo de salud
+app.get('/health/summary', async (req, res) => {
+  const requestLogger = req.logger || logger;
+  
+  try {
+    const summary = await healthMonitoring.getHealthSummary();
+    
+    requestLogger.debug('Resumen de salud consultado');
+    
+    res.json(summary);
+  } catch (err) {
+    requestLogger.error('Error obteniendo resumen de salud', err);
+    res.status(500).json({
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Endpoint para obtener historial de alertas
+app.get('/health/alerts', async (req, res) => {
+  const requestLogger = req.logger || logger;
+  
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const filters = {
+      type: req.query.type,
+      severity: req.query.severity,
+      since: req.query.since
+    };
+
+    const history = healthMonitoring.getAlertHistory(limit, filters);
+    
+    res.json(history);
+  } catch (err) {
+    requestLogger.error('Error obteniendo historial de alertas', err);
+    res.status(500).json({
+      error: err.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
