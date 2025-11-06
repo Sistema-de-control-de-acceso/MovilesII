@@ -80,6 +80,59 @@ class DatabaseIndexes {
       {
         keys: { hora_entrada: 1 },
         options: { name: 'idx_presencia_entrada', background: true }
+      },
+      // Índice compuesto crítico para consultas de presencia activa
+      {
+        keys: { estudiante_dni: 1, esta_dentro: 1 },
+        options: { name: 'idx_presencia_dni_estado', background: true }
+      }
+    ];
+  }
+
+  /**
+   * Define índices para la colección de usuarios
+   */
+  getUserIndexes() {
+    return [
+      {
+        keys: { email: 1, estado: 1 },
+        options: { name: 'idx_user_email_estado', background: true }
+      },
+      {
+        keys: { dni: 1 },
+        options: { name: 'idx_user_dni', background: true }
+      }
+    ];
+  }
+
+  /**
+   * Define índices para la colección de alumnos
+   */
+  getAlumnoIndexes() {
+    return [
+      {
+        keys: { codigo_universitario: 1, estado: 1 },
+        options: { name: 'idx_alumno_codigo_estado', background: true }
+      },
+      {
+        keys: { dni: 1 },
+        options: { name: 'idx_alumno_dni', background: true }
+      }
+    ];
+  }
+
+  /**
+   * Define índices para la colección de asignaciones
+   */
+  getAsignacionIndexes() {
+    return [
+      {
+        keys: { punto_id: 1, estado: 1 },
+        options: { name: 'idx_asignacion_punto_estado', background: true }
+      },
+      {
+        keys: { guardia_id: 1, estado: 1 },
+        options: { name: 'idx_asignacion_guardia_estado', background: true }
       }
     ];
   }
@@ -113,10 +166,13 @@ class DatabaseIndexes {
   /**
    * Crea todos los índices para el sistema completo
    */
-  async createAllIndexes(AsistenciaModel, PresenciaModel) {
+  async createAllIndexes(AsistenciaModel, PresenciaModel, UserModel, AlumnoModel, AsignacionModel) {
     const results = {
       asistencias: [],
-      presencia: []
+      presencia: [],
+      usuarios: [],
+      alumnos: [],
+      asignaciones: []
     };
 
     // Índices para asistencias
@@ -126,6 +182,24 @@ class DatabaseIndexes {
     // Índices para presencia
     const presenciaIndexes = this.getPresenciaIndexes();
     results.presencia = await this.createIndexes(PresenciaModel.collection, presenciaIndexes);
+
+    // Índices para usuarios
+    if (UserModel) {
+      const userIndexes = this.getUserIndexes();
+      results.usuarios = await this.createIndexes(UserModel.collection, userIndexes);
+    }
+
+    // Índices para alumnos
+    if (AlumnoModel) {
+      const alumnoIndexes = this.getAlumnoIndexes();
+      results.alumnos = await this.createIndexes(AlumnoModel.collection, alumnoIndexes);
+    }
+
+    // Índices para asignaciones
+    if (AsignacionModel) {
+      const asignacionIndexes = this.getAsignacionIndexes();
+      results.asignaciones = await this.createIndexes(AsignacionModel.collection, asignacionIndexes);
+    }
 
     return results;
   }
