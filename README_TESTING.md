@@ -1299,3 +1299,64 @@ node backend/scripts/trigger-mobile-alerts.js all
 
 Ver `docs/MOBILE_MONITORING.md` para documentación detallada.
 
+## 🚀 Optimización de Performance - Consultas Críticas
+
+Sistema completo de optimización y monitoreo de rendimiento para consultas críticas de base de datos.
+
+### Características
+
+- ✅ Consultas críticas identificadas y optimizadas
+- ✅ Baseline de rendimiento creado
+- ✅ Índices adecuados para consultas críticas
+- ✅ Tests automatizados (integration + smoke + performance)
+- ✅ Validación de no regresiones funcionales
+- ✅ Documentación completa de cambios
+
+### Consultas Críticas Optimizadas
+
+1. **Login**: `User.findOne({ email, estado: 'activo' })` - < 200ms
+2. **Búsqueda Alumno**: `Alumno.findOne({ codigo_universitario })` - < 200ms
+3. **Última Asistencia**: `Asistencia.findOne({ dni }).sort({ fecha_hora: -1 })` - < 200ms
+4. **Presencia Activa**: `Presencia.findOne({ estudiante_dni, esta_dentro: true })` - < 200ms
+5. **Asistencias por Fecha**: `Asistencia.find({ fecha_hora: { $gte } })` - < 500ms
+
+### Índices Creados
+
+- `idx_presencia_dni_estado`: Presencia activa por DNI
+- `idx_user_email_estado`: Login por email y estado
+- `idx_alumno_codigo_estado`: Búsqueda de alumno por código
+- `idx_asignacion_punto_estado`: Asignaciones por punto
+- `idx_asignacion_guardia_estado`: Asignaciones por guardia
+
+### Tests
+
+```bash
+# Tests de performance
+npm test -- critical-queries.test.js
+
+# Smoke tests
+npm test -- smoke-tests.test.js
+
+# Tests de integración
+npm test -- integration-performance.test.js
+```
+
+### Scripts
+
+```bash
+# Crear baseline de rendimiento
+node backend/scripts/create-performance-baseline.js
+
+# Optimizar índices
+node backend/scripts/optimize-indexes.js
+```
+
+### Documentación Completa
+
+Ver `docs/PERFORMANCE_OPTIMIZATION.md` para documentación detallada de:
+- Consultas críticas identificadas
+- Índices creados/actualizados
+- Tests automatizados
+- Métricas objetivo
+- Mejoras implementadas
+
