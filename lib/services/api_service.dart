@@ -14,8 +14,76 @@ class ApiService {
   factory ApiService() => _instance;
   ApiService._internal();
 
-  // Headers por defecto
-  Map<String, String> get _headers => {'Content-Type': 'application/json'};
+  // Headers por defecto con identificación de cliente móvil
+  Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    'X-Client-Type': 'mobile',
+    'X-Requested-With': 'Flutter'
+  };
+
+  // ==================== MÉTODOS GENÉRICOS HTTP ====================
+
+  /// Método GET genérico
+  Future<Map<String, dynamic>> get(String endpoint, {Map<String, String>? additionalHeaders}) async {
+    try {
+      final url = endpoint.startsWith('http') 
+          ? Uri.parse(endpoint)
+          : Uri.parse('${ApiConfig.baseUrl}$endpoint');
+      
+      final headers = {..._headers, ...?additionalHeaders};
+      final response = await http.get(url, headers: headers);
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
+    }
+  }
+
+  /// Método POST genérico
+  Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body, {Map<String, String>? additionalHeaders}) async {
+    try {
+      final url = endpoint.startsWith('http') 
+          ? Uri.parse(endpoint)
+          : Uri.parse('${ApiConfig.baseUrl}$endpoint');
+      
+      final headers = {..._headers, ...?additionalHeaders};
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: json.encode(body),
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
+    }
+  }
+
+  /// Verificar compatibilidad con el servidor
+  Future<Map<String, dynamic>> checkCompatibility() async {
+    try {
+      return await get('/api/compatibility/check');
+    } catch (e) {
+      throw Exception('Error verificando compatibilidad: $e');
+    }
+  }
+
+  /// Obtener información de la API
+  Future<Map<String, dynamic>> getApiInfo() async {
+    try {
+      return await get('/api/info');
+    } catch (e) {
+      throw Exception('Error obteniendo información de API: $e');
+    }
+  }
 
   // ==================== MÉTODOS GENÉRICOS HTTP ====================
 
