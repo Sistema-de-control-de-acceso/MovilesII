@@ -34,12 +34,12 @@ class AdminViewModel extends ChangeNotifier {
   }
 
   // Crear usuario
-  Future<bool> createUsuario(UsuarioModel usuario) async {
+  Future<bool> createUsuario(UsuarioModel usuario, {bool sendNotification = true}) async {
     _setLoading(true);
     _clearMessages();
 
     try {
-      final nuevoUsuario = await _apiService.createUsuario(usuario);
+      final nuevoUsuario = await _apiService.createUsuario(usuario, sendNotification: sendNotification);
       _usuarios.add(nuevoUsuario);
       _setSuccess('Usuario creado exitosamente');
       _setLoading(false);

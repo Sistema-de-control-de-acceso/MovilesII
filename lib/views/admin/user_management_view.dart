@@ -5,6 +5,7 @@ import '../../models/usuario_model.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/status_widgets.dart';
+import 'register_guard_view.dart';
 
 class UserManagementView extends StatefulWidget {
   @override
@@ -26,7 +27,19 @@ class _UserManagementViewState extends State<UserManagementView> {
   }
 
   void _showCreateUserDialog() {
-    showDialog(context: context, builder: (context) => CreateUserDialog());
+    // Opción 1: Usar el diálogo simple (mantener compatibilidad)
+    // showDialog(context: context, builder: (context) => CreateUserDialog());
+    
+    // Opción 2: Navegar a la vista completa de registro (recomendado)
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RegisterGuardView(),
+      ),
+    ).then((_) {
+      // Recargar usuarios después de registrar
+      _loadUsuarios();
+    });
   }
 
   void _showChangePasswordDialog(UsuarioModel usuario) {

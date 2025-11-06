@@ -143,12 +143,15 @@ class ApiService {
     }
   }
 
-  Future<UsuarioModel> createUsuario(UsuarioModel usuario) async {
+  Future<UsuarioModel> createUsuario(UsuarioModel usuario, {bool sendNotification = true}) async {
     try {
+      final userData = usuario.toJson();
+      userData['send_notification'] = sendNotification;
+      
       final response = await http.post(
         Uri.parse(ApiConfig.usuariosUrl),
         headers: _headers,
-        body: json.encode(usuario.toJson()),
+        body: json.encode(userData),
       );
 
       if (response.statusCode == 201) {

@@ -205,10 +205,43 @@ class _StudentSearchViewState extends State<StudentSearchView> {
                         itemCount: filteredResults.length,
                         itemBuilder: (context, index) {
                           final estudiante = filteredResults[index];
-                          return Padding(
-                            padding: EdgeInsets.only(bottom: 12),
-                            child: StudentBasicInfoCompactWidget(
-                              estudiante: estudiante,
+                          return Card(
+                            margin: EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: estudiante.isActive ? Colors.green[100] : Colors.red[100],
+                                child: Icon(
+                                  Icons.person,
+                                  color: estudiante.isActive ? Colors.green : Colors.red,
+                                ),
+                              ),
+                              title: Text(
+                                estudiante.nombreCompleto,
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Código: ${estudiante.codigoUniversitario}'),
+                                  Text('DNI: ${estudiante.dni}'),
+                                  Text('${estudiante.siglasFacultad} - ${estudiante.siglasEscuela}'),
+                                ],
+                              ),
+                              trailing: Container(
+                                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: estudiante.isActive ? Colors.green[100] : Colors.red[100],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  estudiante.isActive ? 'Activo' : 'Inactivo',
+                                  style: TextStyle(
+                                    color: estudiante.isActive ? Colors.green[700] : Colors.red[700],
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                               onTap: () {
                                 Navigator.push(
                                   context,
