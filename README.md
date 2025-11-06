@@ -5,10 +5,14 @@ Sistema completo de detección automática de pulseras NFC para identificar estu
 ## 🚀 Características Principales
 
 - ✅ **Detección Automática**: Detecta pulseras NFC automáticamente a 10cm
+- ✅ **Lectura Precisa de ID Único**: Lee IDs únicos con precisión a 10cm
+- ✅ **Validación de ID**: Valida formato y contenido de IDs únicos
 - ✅ **Lectura Sin Contacto**: No requiere tocar el dispositivo
 - ✅ **Feedback Multimodal**: Visual, sonoro y háptico
 - ✅ **Calibración Precisa**: Sistema de calibración para mejorar precisión
 - ✅ **Algoritmo Avanzado**: Múltiples métodos de cálculo de distancia
+- ✅ **Manejo Robusto de Errores**: Captura y manejo completo de errores
+- ✅ **Logging Completo**: Registro de todos los eventos NFC
 
 ## 📋 Requisitos
 
@@ -80,18 +84,28 @@ Ver `docs/NFC_AUTO_DETECTION.md` para instrucciones detalladas de pruebas de har
   - Guía de calibración
   - Troubleshooting
 
+- **Lectura Precisa de ID Único**: `docs/NFC_PRECISE_READING.md`
+  - Lectura precisa a 10cm
+  - Validación de ID único
+  - Manejo de errores
+  - Sistema de logging
+
 ## 🏗️ Estructura del Proyecto
 
 ```
 lib/
 ├── services/
 │   ├── nfc_auto_detection_service.dart    # Servicio principal
+│   ├── nfc_precise_reader_service.dart   # Lectura precisa de ID único
 │   ├── nfc_proximity_algorithm.dart      # Algoritmo de distancia
-│   └── nfc_calibration_service.dart      # Calibración
+│   ├── nfc_calibration_service.dart      # Calibración
+│   └── nfc_event_logger.dart             # Logging de eventos
 ├── widgets/
-│   └── nfc_detection_widget.dart         # Widget de UI
+│   ├── nfc_detection_widget.dart         # Widget de UI
+│   └── nfc_reading_status_widget.dart    # Estado de lectura
 └── screens/
-    └── nfc_auto_detection_screen.dart    # Pantalla principal
+    ├── nfc_auto_detection_screen.dart    # Pantalla principal
+    └── nfc_precise_reading_screen.dart   # Pantalla de lectura precisa
 ```
 
 ## 🔍 Troubleshooting
