@@ -10,10 +10,16 @@ import 'viewmodels/student_status_viewmodel.dart';
 import 'services/connectivity_service.dart';
 import 'services/offline_sync_service.dart';
 import 'services/hybrid_api_service.dart';
+import 'services/logging_service.dart';
 import 'views/login_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inicializar logging primero
+  await LoggingService().initialize();
+  final logging = LoggingService();
+  logging.info('Aplicación iniciada');
   
   // Inicializar Hive para almacenamiento local
   await Hive.initFlutter();
@@ -25,13 +31,16 @@ void main() async {
 }
 
 Future<void> _initializeOfflineServices() async {
+  final logging = LoggingService();
   try {
+    logging.info('Inicializando servicios offline');
     // Inicializar servicios en orden
     await ConnectivityService().initialize();
     await OfflineSyncService().initialize();
     await HybridApiService().initialize();
-  } catch (e) {
-    print('Error inicializando servicios offline: $e');
+    logging.info('Servicios offline inicializados exitosamente');
+  } catch (e, stackTrace) {
+    logging.error('Error inicializando servicios offline', error: e, stackTrace: stackTrace);
   }
 }
 

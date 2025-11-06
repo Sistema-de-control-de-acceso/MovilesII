@@ -258,6 +258,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
+const { requestIdMiddleware, httpLoggerMiddleware, logger } = require('./utils/logger');
 
 const app = express();
 
@@ -299,13 +300,17 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Type', 'X-Device-ID', 'X-Requested-With'],
-  exposedHeaders: ['X-Total-Count', 'X-Page-Count', 'X-Client-Type']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Type', 'X-Device-ID', 'X-Requested-With', 'X-Request-ID'],
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count', 'X-Client-Type', 'X-Request-ID']
 };
 
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.static('public'));
+
+// Middlewares de logging (debe ir después de express.json para tener acceso a req.body)
+app.use(requestIdMiddleware);
+app.use(httpLoggerMiddleware);
 
 // Middleware para detectar y registrar tipo de cliente
 app.use((req, res, next) => {
@@ -726,18 +731,42 @@ app.put('/usuarios/:id/password', async (req, res) => {
 // Ruta de login segura
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
+  const requestLogger = req.logger || logger;
+  
   try {
+    requestLogger.info('Intento de login', { 
+      email,
+      metadata: { clientType: req.clientType, deviceId: req.deviceId }
+    });
+    
     // Buscar usuario por email
     const user = await User.findOne({ email, estado: 'activo' });
     if (!user) {
+      requestLogger.warn('Login fallido: usuario no encontrado o inactivo', { 
+        email,
+        metadata: { clientType: req.clientType }
+      });
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
     // Verificar contraseña con bcrypt
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
+      requestLogger.warn('Login fallido: contraseña incorrecta', { 
+        email,
+        userId: user._id.toString(),
+        metadata: { clientType: req.clientType }
+      });
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
+
+    // Login exitoso
+    requestLogger.info('Login exitoso', { 
+      email,
+      userId: user._id.toString(),
+      rango: user.rango,
+      metadata: { clientType: req.clientType, deviceId: req.deviceId }
+    });
 
     // Enviar datos del usuario (sin contraseña)
     res.json({
@@ -751,6 +780,10 @@ app.post('/login', async (req, res) => {
       estado: user.estado
     });
   } catch (err) {
+    requestLogger.error('Error en login', err, { 
+      email,
+      metadata: { clientType: req.clientType }
+    });
     res.status(500).json({ error: 'Error en el servidor' });
   }
 });
@@ -859,14 +892,27 @@ app.get('/externos', async (req, res) => {
 
 // Ruta para registrar asistencia completa (US025-US030)
 app.post('/asistencias/completa', async (req, res) => {
+  const requestLogger = req.logger || logger;
+  
   try {
     const asistenciaData = req.body;
+    
+    requestLogger.info('Registro de asistencia completa', {
+      dni: asistenciaData.dni,
+      tipo: asistenciaData.tipo,
+      punto_control_id: asistenciaData.punto_control_id,
+      metadata: { clientType: req.clientType, deviceId: req.deviceId }
+    });
     
     // Validar y preparar datos de punto de control si se proporciona
     if (asistenciaData.punto_control_id) {
       // Verificar que el punto de control existe
       const puntoControl = await PuntoControl.findById(asistenciaData.punto_control_id);
       if (!puntoControl) {
+        requestLogger.warn('Punto de control no encontrado al registrar asistencia', {
+          punto_control_id: asistenciaData.punto_control_id,
+          dni: asistenciaData.dni
+        });
         return res.status(400).json({ 
           error: 'Punto de control no encontrado', 
           punto_control_id: asistenciaData.punto_control_id 
@@ -900,8 +946,20 @@ app.post('/asistencias/completa', async (req, res) => {
     
     const asistencia = new Asistencia(asistenciaData);
     await asistencia.save();
+    
+    requestLogger.info('Asistencia registrada exitosamente', {
+      asistencia_id: asistencia._id,
+      dni: asistenciaData.dni,
+      tipo: asistenciaData.tipo,
+      punto_control_id: asistenciaData.punto_control_id
+    });
+    
     res.status(201).json(asistencia);
   } catch (err) {
+    requestLogger.error('Error al registrar asistencia completa', err, {
+      dni: req.body?.dni,
+      tipo: req.body?.tipo
+    });
     res.status(500).json({ error: 'Error al registrar asistencia completa', details: err.message });
   }
 });

@@ -8,61 +8,144 @@ import '../models/visita_externo_model.dart';
 import '../models/decision_manual_model.dart';
 import '../models/presencia_model.dart';
 import '../config/api_config.dart';
+import 'logging_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
   ApiService._internal();
 
+  final LoggingService _logging = LoggingService();
+
   // Headers por defecto con identificación de cliente móvil
-  Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    'X-Client-Type': 'mobile',
-    'X-Requested-With': 'Flutter'
-  };
+  Map<String, String> get _headers {
+    final requestId = _logging.generateRequestId();
+    return {
+      'Content-Type': 'application/json',
+      'X-Client-Type': 'mobile',
+      'X-Requested-With': 'Flutter',
+      'X-Request-ID': requestId,
+    };
+  }
 
   // ==================== MÉTODOS GENÉRICOS HTTP ====================
 
   /// Método GET genérico
   Future<Map<String, dynamic>> get(String endpoint, {Map<String, String>? additionalHeaders}) async {
+    final startTime = DateTime.now();
+    final requestId = _headers['X-Request-ID']!;
+    _logging.setRequestId(requestId);
+    
     try {
       final url = endpoint.startsWith('http') 
           ? Uri.parse(endpoint)
           : Uri.parse('${ApiConfig.baseUrl}$endpoint');
       
       final headers = {..._headers, ...?additionalHeaders};
+      
+      _logging.httpRequest(
+        method: 'GET',
+        endpoint: endpoint,
+        headers: headers,
+      );
+      
       final response = await http.get(url, headers: headers);
+      final duration = DateTime.now().difference(startTime).inMilliseconds;
+      
+      // Extraer request-id de la respuesta si está disponible
+      final responseRequestId = response.headers['x-request-id'];
+      if (responseRequestId != null) {
+        _logging.setRequestId(responseRequestId);
+      }
+      
+      _logging.httpResponse(
+        method: 'GET',
+        endpoint: endpoint,
+        statusCode: response.statusCode,
+        durationMs: duration,
+      );
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
+        _logging.error(
+          'Error HTTP en GET $endpoint',
+          error: Exception('HTTP ${response.statusCode}: ${response.body}'),
+          metadata: {'statusCode': response.statusCode, 'body': response.body},
+        );
         throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      final duration = DateTime.now().difference(startTime).inMilliseconds;
+      _logging.error(
+        'Error de conexión en GET $endpoint',
+        error: e,
+        stackTrace: stackTrace,
+        metadata: {'durationMs': duration},
+      );
       throw Exception('Error de conexión: $e');
     }
   }
 
   /// Método POST genérico
   Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body, {Map<String, String>? additionalHeaders}) async {
+    final startTime = DateTime.now();
+    final requestId = _headers['X-Request-ID']!;
+    _logging.setRequestId(requestId);
+    
     try {
       final url = endpoint.startsWith('http') 
           ? Uri.parse(endpoint)
           : Uri.parse('${ApiConfig.baseUrl}$endpoint');
       
       final headers = {..._headers, ...?additionalHeaders};
+      
+      _logging.httpRequest(
+        method: 'POST',
+        endpoint: endpoint,
+        headers: headers,
+        body: body,
+      );
+      
       final response = await http.post(
         url,
         headers: headers,
         body: json.encode(body),
       );
+      
+      final duration = DateTime.now().difference(startTime).inMilliseconds;
+      
+      // Extraer request-id de la respuesta si está disponible
+      final responseRequestId = response.headers['x-request-id'];
+      if (responseRequestId != null) {
+        _logging.setRequestId(responseRequestId);
+      }
+      
+      _logging.httpResponse(
+        method: 'POST',
+        endpoint: endpoint,
+        statusCode: response.statusCode,
+        durationMs: duration,
+      );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return json.decode(response.body);
       } else {
+        _logging.error(
+          'Error HTTP en POST $endpoint',
+          error: Exception('HTTP ${response.statusCode}: ${response.body}'),
+          metadata: {'statusCode': response.statusCode, 'body': response.body},
+        );
         throw Exception('Error HTTP ${response.statusCode}: ${response.body}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      final duration = DateTime.now().difference(startTime).inMilliseconds;
+      _logging.error(
+        'Error de conexión en POST $endpoint',
+        error: e,
+        stackTrace: stackTrace,
+        metadata: {'durationMs': duration},
+      );
       throw Exception('Error de conexión: $e');
     }
   }

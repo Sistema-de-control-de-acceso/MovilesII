@@ -298,3 +298,235 @@ const schemas = {
 };
 ```
 
+## 📊 Logging Centralizado
+
+El sistema implementa logging estructurado en formato JSON para facilitar debugging y correlación entre mobile y backend.
+
+### Características
+
+- **Logs estructurados (JSON)**: Formato estándar para ELK/Datadog/Cloud Logging
+- **Request-ID propagation**: Correlación entre mobile y backend
+- **Eventos críticos instrumentados**: Login, asistencias, errores, etc.
+- **Retención configurada**: Logs disponibles en staging
+
+### Estructura de Logs
+
+Los logs incluyen los siguientes campos:
+
+```json
+{
+  "timestamp": "2024-01-15 10:30:45.123",
+  "level": "info",
+  "message": "Login exitoso",
+  "service": "moviles2-backend",
+  "environment": "staging",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "userId": "user123",
+  "endpoint": "/login",
+  "method": "POST",
+  "statusCode": 200,
+  "duration": 150,
+  "metadata": {
+    "email": "user@example.com",
+    "clientType": "mobile"
+  }
+}
+```
+
+### Request-ID
+
+El sistema propaga automáticamente el `request-id` entre mobile y backend:
+
+- **Mobile**: Genera un `request-id` único y lo envía en el header `X-Request-ID`
+- **Backend**: Usa el `request-id` recibido o genera uno nuevo, lo retorna en el header `X-Request-ID`
+- **Correlación**: Permite rastrear un request completo desde mobile hasta backend
+
+### Acceso a Logs
+
+#### En Desarrollo
+
+Los logs se muestran en consola con formato legible:
+
+```bash
+cd backend
+npm start
+```
+
+#### En Staging
+
+Los logs están disponibles en:
+
+1. **Archivo de logs** (si está configurado):
+   ```bash
+   tail -f logs/app.log
+   ```
+
+2. **Sistema de logging centralizado**:
+   - Configurar `LOG_ENDPOINT` en variables de entorno
+   - Los logs se envían automáticamente al endpoint configurado
+
+### Queries Útiles
+
+#### Buscar logs por request-id
+
+```bash
+# En archivo de logs
+grep "550e8400-e29b-41d4-a716-446655440000" logs/app.log
+
+# En sistema centralizado (ejemplo para ELK)
+GET /logs/_search
+{
+  "query": {
+    "match": {
+      "requestId": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  }
+}
+```
+
+#### Buscar logs de un usuario
+
+```bash
+# En archivo de logs
+grep "\"userId\":\"user123\"" logs/app.log
+
+# En sistema centralizado
+GET /logs/_search
+{
+  "query": {
+    "match": {
+      "userId": "user123"
+    }
+  }
+}
+```
+
+#### Buscar errores en las últimas horas
+
+```bash
+# En archivo de logs
+grep "\"level\":\"error\"" logs/app.log | tail -100
+
+# En sistema centralizado
+GET /logs/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "match": { "level": "error" } },
+        { "range": { "timestamp": { "gte": "now-1h" } } }
+      ]
+    }
+  }
+}
+```
+
+#### Buscar logs de eventos críticos
+
+```bash
+# Login exitoso
+grep "\"message\":\"Login exitoso\"" logs/app.log
+
+# Registro de asistencia
+grep "\"message\":\"Asistencia registrada exitosamente\"" logs/app.log
+
+# Errores de autenticación
+grep "\"message\":\"Login fallido\"" logs/app.log
+```
+
+### Tests E2E de Logging
+
+Los tests E2E validan que los logs se generen correctamente:
+
+```bash
+cd backend
+npm run test:e2e -- logging.e2e.test.js
+```
+
+Los tests verifican:
+- ✅ Generación y propagación de request-id
+- ✅ Logs en eventos críticos (login, asistencias)
+- ✅ Formato JSON estructurado
+- ✅ Correlación mobile-backend
+
+### Configuración
+
+#### Variables de Entorno
+
+```env
+# Nivel de log (error, warn, info, http, debug)
+LOG_LEVEL=info
+
+# Ruta del archivo de logs (opcional)
+LOG_FILE_PATH=logs/app.log
+
+# Endpoint para logging centralizado (opcional)
+LOG_ENDPOINT=https://logs.example.com/api/logs
+```
+
+#### Configuración en Staging
+
+Editar `backend/config/staging.js`:
+
+```javascript
+module.exports = {
+  LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
+  LOG_FILE_PATH: process.env.LOG_FILE_PATH || 'logs/staging.log',
+  // ... otras configuraciones
+};
+```
+
+### Instrumentación de Eventos Críticos
+
+Los siguientes eventos generan logs automáticamente:
+
+#### Backend
+
+- ✅ Login (exitoso y fallido)
+- ✅ Registro de asistencias
+- ✅ Errores HTTP
+- ✅ Requests HTTP (método, endpoint, duración, status)
+
+#### Mobile (Flutter)
+
+- ✅ Inicio de aplicación
+- ✅ Login (exitoso y fallido)
+- ✅ Logout
+- ✅ Requests HTTP (request y response)
+- ✅ Errores de conexión
+- ✅ Eventos críticos (NFC, sincronización)
+
+### Retención de Logs
+
+- **Desarrollo**: Logs en consola, sin retención
+- **Staging**: Logs en archivo (si está configurado) y sistema centralizado
+- **Producción**: Logs solo en sistema centralizado
+
+### Troubleshooting
+
+#### Los logs no aparecen
+
+1. Verificar nivel de log configurado:
+   ```bash
+   echo $LOG_LEVEL
+   ```
+
+2. Verificar que el logger esté inicializado:
+   - Backend: Verificar que `requestIdMiddleware` esté configurado
+   - Mobile: Verificar que `LoggingService().initialize()` se llame en `main()`
+
+#### Request-ID no se propaga
+
+1. Verificar headers en requests:
+   ```bash
+   curl -H "X-Request-ID: test-123" http://localhost:3000/api/info
+   ```
+
+2. Verificar que el middleware esté configurado antes de las rutas
+
+#### Logs no se envían a sistema centralizado
+
+1. Verificar configuración de `LOG_ENDPOINT`
+2. Verificar conectividad al endpoint
+3. Revisar logs de error (los errores de envío son silenciosos para evitar loops)
+
