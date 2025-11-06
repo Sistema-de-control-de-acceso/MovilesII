@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../viewmodels/reports_viewmodel.dart';
 import '../../widgets/status_widgets.dart';
+import '../../widgets/report_filters_widget.dart';
 import 'guard_reports_view.dart';
 
 class ReportsView extends StatefulWidget {
@@ -12,6 +13,7 @@ class ReportsView extends StatefulWidget {
 class _ReportsViewState extends State<ReportsView>
     with TickerProviderStateMixin {
   late TabController _tabController;
+  final ReportFilters _filters = ReportFilters();
 
   @override
   void initState() {
@@ -34,6 +36,19 @@ class _ReportsViewState extends State<ReportsView>
       listen: false,
     );
     await reportsViewModel.loadAllData();
+  }
+
+  void _onFiltersChanged(ReportFilters filters) {
+    final reportsViewModel = Provider.of<ReportsViewModel>(
+      context,
+      listen: false,
+    );
+    reportsViewModel.updateFilters(
+      fechaInicio: filters.fechaInicio,
+      fechaFin: filters.fechaFin,
+      carrera: filters.carreraSeleccionada,
+      facultad: filters.facultadSeleccionada,
+    );
   }
 
   @override
@@ -143,6 +158,16 @@ class _ReportsViewState extends State<ReportsView>
     );
   }
 
+  Widget _buildFiltersSection(ReportsViewModel reportsViewModel) {
+    return ReportFiltersWidget(
+      filters: _filters,
+      carreras: reportsViewModel.listaCarreras,
+      facultades: reportsViewModel.listaFacultades,
+      onFiltersChanged: _onFiltersChanged,
+      mostrarFacultades: true,
+    );
+  }
+
   Widget _buildSummaryCard(
     String title,
     String value,
@@ -188,20 +213,31 @@ class _ReportsViewState extends State<ReportsView>
     return RefreshIndicator(
       onRefresh: _loadReportsData,
       child: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top facultades
-            _buildTopFacultades(reportsViewModel),
+            // Filtros
+            _buildFiltersSection(reportsViewModel),
+            SizedBox(height: 8),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top facultades
+                  _buildTopFacultades(reportsViewModel),
             SizedBox(height: 24),
 
-            // Distribución por hora (simplificada)
-            _buildHourDistribution(reportsViewModel),
-            SizedBox(height: 24),
+                  // Distribución por hora (simplificada)
+                  _buildHourDistribution(reportsViewModel),
+                  SizedBox(height: 24),
 
-            // Resumen general
-            _buildGeneralSummary(reportsViewModel),
+                  // Resumen general
+                  _buildGeneralSummary(reportsViewModel),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -209,7 +245,8 @@ class _ReportsViewState extends State<ReportsView>
   }
 
   Widget _buildTopFacultades(ReportsViewModel reportsViewModel) {
-    final topFacultades = reportsViewModel.getTopFacultades();
+    final asistenciasFiltradas = reportsViewModel.asistenciasFiltradas;
+    final topFacultades = _getTopFacultadesFromList(asistenciasFiltradas);
 
     return Card(
       child: Padding(
@@ -259,7 +296,8 @@ class _ReportsViewState extends State<ReportsView>
   }
 
   Widget _buildHourDistribution(ReportsViewModel reportsViewModel) {
-    final asistenciasPorHora = reportsViewModel.getAsistenciasPorHora();
+    final asistenciasFiltradas = reportsViewModel.asistenciasFiltradas;
+    final asistenciasPorHora = _getAsistenciasPorHoraFromList(asistenciasFiltradas);
 
     return Card(
       child: Padding(
@@ -374,13 +412,37 @@ class _ReportsViewState extends State<ReportsView>
   }
 
   Widget _buildAttendanceTab(ReportsViewModel reportsViewModel) {
-    return RefreshIndicator(
-      onRefresh: _loadReportsData,
-      child: ListView.builder(
-        padding: EdgeInsets.all(16),
-        itemCount: reportsViewModel.asistencias.length,
-        itemBuilder: (context, index) {
-          final asistencia = reportsViewModel.asistencias[index];
+    final asistenciasFiltradas = reportsViewModel.asistenciasFiltradas;
+    
+    return Column(
+      children: [
+        // Filtros
+        _buildFiltersSection(reportsViewModel),
+        // Lista de asistencias
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadReportsData,
+            child: asistenciasFiltradas.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                        SizedBox(height: 16),
+                        Text(
+                          reportsViewModel.tieneFiltrosActivos
+                              ? 'No hay resultados con los filtros aplicados'
+                              : 'No hay asistencias registradas',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: EdgeInsets.all(16),
+                    itemCount: asistenciasFiltradas.length,
+                    itemBuilder: (context, index) {
+                      final asistencia = asistenciasFiltradas[index];
           return Card(
             margin: EdgeInsets.only(bottom: 8),
             child: ListTile(
@@ -401,11 +463,11 @@ class _ReportsViewState extends State<ReportsView>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    asistencia.entradaTipo,
+                    asistencia.tipo.descripcion,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue,
+                      color: asistencia.tipo == TipoMovimiento.entrada ? Colors.green : Colors.red,
                     ),
                   ),
                   Text(
@@ -422,13 +484,37 @@ class _ReportsViewState extends State<ReportsView>
   }
 
   Widget _buildStudentsTab(ReportsViewModel reportsViewModel) {
-    return RefreshIndicator(
-      onRefresh: _loadReportsData,
-      child: ListView.builder(
-        padding: EdgeInsets.all(16),
-        itemCount: reportsViewModel.alumnos.length,
-        itemBuilder: (context, index) {
-          final alumno = reportsViewModel.alumnos[index];
+    final alumnosFiltrados = reportsViewModel.alumnosFiltrados;
+    
+    return Column(
+      children: [
+        // Filtros
+        _buildFiltersSection(reportsViewModel),
+        // Lista de estudiantes
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadReportsData,
+            child: alumnosFiltrados.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                        SizedBox(height: 16),
+                        Text(
+                          reportsViewModel.tieneFiltrosActivos
+                              ? 'No hay estudiantes con los filtros aplicados'
+                              : 'No hay estudiantes registrados',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: EdgeInsets.all(16),
+                    itemCount: alumnosFiltrados.length,
+                    itemBuilder: (context, index) {
+                      final alumno = alumnosFiltrados[index];
           return Card(
             margin: EdgeInsets.only(bottom: 8),
             child: ListTile(
@@ -465,10 +551,39 @@ class _ReportsViewState extends State<ReportsView>
                   ),
                 ),
               ),
-            ),
-          );
-        },
-      ),
+                      ),
+                    );
+                  },
+                ),
+          ),
+        ),
+      ],
     );
+  }
+
+  // Métodos auxiliares para estadísticas filtradas
+  List<MapEntry<String, int>> _getTopFacultadesFromList(List asistencias, {int limit = 5}) {
+    Map<String, int> asistenciasPorFacultad = {};
+
+    for (var asistencia in asistencias) {
+      final siglas = asistencia.siglasFacultad ?? 'N/A';
+      asistenciasPorFacultad[siglas] = (asistenciasPorFacultad[siglas] ?? 0) + 1;
+    }
+
+    var sorted = asistenciasPorFacultad.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return sorted.take(limit).toList();
+  }
+
+  Map<int, int> _getAsistenciasPorHoraFromList(List asistencias) {
+    Map<int, int> asistenciasPorHora = {};
+
+    for (var asistencia in asistencias) {
+      int hora = asistencia.fechaHora.hour;
+      asistenciasPorHora[hora] = (asistenciasPorHora[hora] ?? 0) + 1;
+    }
+
+    return asistenciasPorHora;
   }
 }

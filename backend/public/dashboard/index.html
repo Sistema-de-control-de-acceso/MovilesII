@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Accesos - Monitoreo en Tiempo Real</title>
+    <link rel="stylesheet" href="/dashboard/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="dashboard-wrapper">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Control Acceso</span>
+                </div>
+                <button class="sidebar-toggle" id="sidebarToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-section="dashboard">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-section="metrics">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Métricas</span>
+                </a>
+                <a href="#" class="nav-item" data-section="realtime">
+                    <i class="fas fa-clock"></i>
+                    <span>Tiempo Real</span>
+                </a>
+                <a href="#" class="nav-item" data-section="reports">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Reportes</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Header -->
+            <header class="top-header">
+                <div class="header-left">
+                    <h1><i class="fas fa-tachometer-alt"></i> Dashboard de Accesos</h1>
+                    <div class="breadcrumb">
+                        <span>Inicio</span> / <span>Dashboard</span>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="header-actions">
+                        <button class="btn-icon" id="refreshBtn" title="Actualizar">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn-icon" id="fullscreenBtn" title="Pantalla completa">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <div class="notifications">
+                            <button class="btn-icon" id="notificationsBtn" title="Notificaciones">
+                                <i class="fas fa-bell"></i>
+                                <span class="badge">3</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="user-info">
+                        <div class="status-indicator" id="connectionStatus">
+                            <span class="status-dot"></span>
+                            <span class="status-text">Conectando...</span>
+                        </div>
+                        <div class="last-update">
+                            <i class="fas fa-clock"></i>
+                            <span id="lastUpdate">--:--:--</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Metrics Cards -->
+            <section class="metrics-section">
+                <div class="metric-card" data-metric="today">
+                    <div class="metric-icon-wrapper">
+                        <i class="fas fa-users"></i>
+                        <div class="pulse-ring"></div>
+                    </div>
+                    <div class="metric-content">
+                        <div class="metric-header">
+                            <h3>Accesos Hoy</h3>
+                            <button class="btn-info" title="Información">
+                                <i class="fas fa-info-circle"></i>
+                            </button>
+                        </div>
+                        <div class="metric-value-wrapper">
+                            <p class="metric-value" id="todayAccess">0</p>
+                            <span class="metric-change positive" id="todayChange">
+                                <i class="fas fa-arrow-up"></i> +0%
+                            </span>
+                        </div>
+                        <div class="metric-footer">
+                            <small>vs. Ayer</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card" data-metric="inside">
+                    <div class="metric-icon-wrapper">
+                        <i class="fas fa-building"></i>
+                        <div class="pulse-ring"></div>
+                    </div>
+                    <div class="metric-content">
+                        <div class="metric-header">
+                            <h3>En Instalación</h3>
+                            <button class="btn-info" title="Información">
+                                <i class="fas fa-info-circle"></i>
+                            </button>
+                        </div>
+                        <div class="metric-value-wrapper">
+                            <p class="metric-value" id="currentInside">0</p>
+                            <span class="metric-change" id="insideChange">
+                                <i class="fas fa-minus"></i> 0
+                            </span>
+                        </div>
+                        <div class="metric-footer">
+                            <small>Personas actualmente</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card" data-metric="entrances">
+                    <div class="metric-icon-wrapper">
+                        <i class="fas fa-sign-in-alt"></i>
+                        <div class="pulse-ring"></div>
+                    </div>
+                    <div class="metric-content">
+                        <div class="metric-header">
+                            <h3>Entradas Última Hora</h3>
+                            <button class="btn-info" title="Información">
+                                <i class="fas fa-info-circle"></i>
+                            </button>
+                        </div>
+                        <div class="metric-value-wrapper">
+                            <p class="metric-value" id="lastHourEntrances">0</p>
+                            <span class="metric-change positive" id="hourChange">
+                                <i class="fas fa-arrow-up"></i> +0%
+                            </span>
+                        </div>
+                        <div class="metric-footer">
+                            <small>Últimos 60 minutos</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card" data-metric="exits">
+                    <div class="metric-icon-wrapper">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <div class="pulse-ring"></div>
+                    </div>
+                    <div class="metric-content">
+                        <div class="metric-header">
+                            <h3>Salidas Última Hora</h3>
+                            <button class="btn-info" title="Información">
+                                <i class="fas fa-info-circle"></i>
+                            </button>
+                        </div>
+                        <div class="metric-value-wrapper">
+                            <p class="metric-value" id="lastHourExits">0</p>
+                            <span class="metric-change negative" id="exitChange">
+                                <i class="fas fa-arrow-down"></i> -0%
+                            </span>
+                        </div>
+                        <div class="metric-footer">
+                            <small>Últimos 60 minutos</small>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Section -->
+            <section class="charts-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <i class="fas fa-chart-line"></i>
+                            <h2>Accesos por Hora</h2>
+                        </div>
+                        <div class="chart-controls">
+                            <div class="filter-group">
+                                <button class="btn-filter active" data-period="24h">24h</button>
+                                <button class="btn-filter" data-period="7d">7 días</button>
+                                <button class="btn-filter" data-period="30d">30 días</button>
+                            </div>
+                            <button class="btn-icon-small" id="exportHourlyChart" title="Exportar">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="hourlyChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <i class="fas fa-chart-pie"></i>
+                            <h2>Distribución Entradas/Salidas</h2>
+                        </div>
+                        <button class="btn-icon-small" id="exportDonutChart" title="Exportar">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="entranceExitChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Secondary Charts -->
+            <section class="secondary-charts-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <i class="fas fa-calendar-week"></i>
+                            <h2>Accesos por Día de la Semana</h2>
+                        </div>
+                        <button class="btn-icon-small" id="exportWeeklyChart" title="Exportar">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="weeklyChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <i class="fas fa-university"></i>
+                            <h2>Top 5 Facultades</h2>
+                        </div>
+                        <button class="btn-icon-small" id="exportFacultiesChart" title="Exportar">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="facultiesChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Access Table -->
+            <section class="table-section">
+                <div class="table-card">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <i class="fas fa-history"></i>
+                            <h2>Accesos Recientes</h2>
+                        </div>
+                        <div class="table-actions">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="searchInput" placeholder="Buscar...">
+                            </div>
+                            <button class="btn-primary" id="refreshRecent">
+                                <i class="fas fa-sync-alt"></i>
+                                Actualizar
+                            </button>
+                            <div class="view-toggle">
+                                <button class="btn-view active" data-view="table" title="Vista tabla">
+                                    <i class="fas fa-table"></i>
+                                </button>
+                                <button class="btn-view" data-view="cards" title="Vista tarjetas">
+                                    <i class="fas fa-th"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-container" id="tableContainer">
+                        <table class="access-table" id="accessTable">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <span>Hora</span>
+                                        <button class="sort-btn" data-sort="hora">
+                                            <i class="fas fa-sort"></i>
+                                        </button>
+                                    </th>
+                                    <th>
+                                        <span>Nombre</span>
+                                        <button class="sort-btn" data-sort="nombre">
+                                            <i class="fas fa-sort"></i>
+                                        </button>
+                                    </th>
+                                    <th>
+                                        <span>Tipo</span>
+                                        <button class="sort-btn" data-sort="tipo">
+                                            <i class="fas fa-sort"></i>
+                                        </button>
+                                    </th>
+                                    <th>
+                                        <span>Facultad</span>
+                                        <button class="sort-btn" data-sort="facultad">
+                                            <i class="fas fa-sort"></i>
+                                        </button>
+                                    </th>
+                                    <th>
+                                        <span>Puerta</span>
+                                        <button class="sort-btn" data-sort="puerta">
+                                            <i class="fas fa-sort"></i>
+                                        </button>
+                                    </th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentAccessTable">
+                                <tr>
+                                    <td colspan="7" class="loading-state">
+                                        <div class="loader"></div>
+                                        <span>Cargando datos...</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="cards-container" id="cardsContainer" style="display: none;">
+                        <div class="access-cards-grid" id="accessCardsGrid">
+                            <!-- Cards will be generated here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loader-spinner">
+            <div class="spinner"></div>
+            <p>Cargando...</p>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="/dashboard/app.js"></script>
+</body>
+</html>
+

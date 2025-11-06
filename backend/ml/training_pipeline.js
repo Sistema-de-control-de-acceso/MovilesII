@@ -7,6 +7,9 @@ const DatasetCollector = require('./dataset_collector');
 const TrainTestSplit = require('./train_test_split');
 const ModelTrainer = require('./model_trainer');
 const ModelValidator = require('./model_validator');
+    // Importar el servicio de alertas
+    const CongestionAlertService = require('./alert_service');
+    const congestionAlertService = new CongestionAlertService();
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -38,6 +41,12 @@ class TrainingPipeline {
     // Usar collector pasado como parámetro o instancia propia
     const datasetCollector = collector || this.collector;
     
+      function generarAlertasCongestion(controlPointsData) {
+          const alerts = congestionAlertService.generateAlerts(controlPointsData);
+          // Aquí podrías guardar las alertas en la base de datos o enviarlas a un endpoint
+          console.log('Alertas de congestión generadas:', alerts);
+          return alerts;
+      }
     if (!datasetCollector) {
       throw new Error('DatasetCollector no disponible. Debe pasarse como parámetro o en constructor.');
     }

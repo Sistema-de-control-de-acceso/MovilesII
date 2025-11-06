@@ -1,0 +1,44 @@
+name: Documentar API endpoints
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - 'docs/**'
+      - '.github/workflows/api-docs.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  generate-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Instalar deps backend (opcional)
+        working-directory: backend
+        run: |
+          npm ci || npm install
+      - name: Generar documentación de API
+        run: |
+          node backend/scripts/generate_api_docs.js
+      - name: Verificar cambios en docs/API.md
+        run: |
+          git diff --exit-code docs/API.md || (echo "La documentación de API no está actualizada. Ejecuta: npm run docs:api en backend" && exit 1)
+      - name: Subir artefacto (API.md)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: API-md-actualizado
+          path: docs/API.md
+
+

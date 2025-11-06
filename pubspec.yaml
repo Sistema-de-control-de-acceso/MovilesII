@@ -35,11 +35,20 @@ dependencies:
   pdf: ^3.10.7
   printing: ^5.12.0
   csv: ^5.0.2
+  device_info_plus: ^9.1.1
+  package_info_plus: ^5.0.1
+  cached_network_image: ^3.3.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   flutter_lints: ^5.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.7
+  test_coverage: ^0.4.5
+  golden_toolkit: ^0.15.0
 
 flutter:
   uses-material-design: true
