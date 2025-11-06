@@ -259,6 +259,15 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const { requestIdMiddleware, httpLoggerMiddleware, logger } = require('./utils/logger');
+const {
+  loginLimiter,
+  authLimiter,
+  userCrudLimiter,
+  metricsLimiter,
+  asistenciaLimiter,
+  mlLimiter,
+  generalLimiter
+} = require('./utils/rateLimiter');
 
 const app = express();
 
@@ -311,6 +320,10 @@ app.use(express.static('public'));
 // Middlewares de logging (debe ir después de express.json para tener acceso a req.body)
 app.use(requestIdMiddleware);
 app.use(httpLoggerMiddleware);
+
+// Rate limiting general (aplicado a todos los endpoints por defecto)
+// Los endpoints específicos pueden tener sus propios limiters más estrictos
+app.use(generalLimiter);
 
 // Middleware para detectar y registrar tipo de cliente
 app.use((req, res, next) => {
@@ -592,7 +605,7 @@ app.get('/escuelas', async (req, res) => {
 });
 
 // Ruta para obtener usuarios (sin contraseñas)
-app.get('/usuarios', async (req, res) => {
+app.get('/usuarios', userCrudLimiter, async (req, res) => {
   try {
     const users = await User.find().select('-password');
     res.json(users);
@@ -606,7 +619,7 @@ const NotificationService = require('./services/notification_service');
 const notificationService = new NotificationService();
 
 // Ruta para crear usuario con contraseña encriptada
-app.post('/usuarios', async (req, res) => {
+app.post('/usuarios', userCrudLimiter, async (req, res) => {
   try {
     const { nombre, apellido, dni, email, password, rango, puerta_acargo, telefono, send_notification } = req.body;
     
@@ -705,7 +718,7 @@ app.post('/usuarios/:id/notify', async (req, res) => {
 });
 
 // Ruta para cambiar contraseña
-app.put('/usuarios/:id/password', async (req, res) => {
+app.put('/usuarios/:id/password', authLimiter, async (req, res) => {
   try {
     const { password } = req.body;
     
@@ -728,8 +741,8 @@ app.put('/usuarios/:id/password', async (req, res) => {
   }
 });
 
-// Ruta de login segura
-app.post('/login', async (req, res) => {
+// Ruta de login segura con rate limiting estricto
+app.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   const requestLogger = req.logger || logger;
   
@@ -789,7 +802,7 @@ app.post('/login', async (req, res) => {
 });
 
 // Ruta para actualizar usuario
-app.put('/usuarios/:id', async (req, res) => {
+app.put('/usuarios/:id', userCrudLimiter, async (req, res) => {
   try {
     const { password, ...updateData } = req.body;
     
@@ -812,7 +825,7 @@ app.put('/usuarios/:id', async (req, res) => {
 });
 
 // Ruta para obtener usuario por ID
-app.get('/usuarios/:id', async (req, res) => {
+app.get('/usuarios/:id', userCrudLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
     if (!user) {
@@ -1033,7 +1046,7 @@ app.get('/asistencias/historial/:dni', async (req, res) => {
 });
 
 // Validar coherencia de movimiento - Mejorado con validación temporal y estado de presencia
-app.post('/asistencias/validar-movimiento', async (req, res) => {
+app.post('/asistencias/validar-movimiento', asistenciaLimiter, async (req, res) => {
   try {
     const { dni, tipo, fecha_hora } = req.body;
     
@@ -4040,7 +4053,7 @@ class RealtimeMetricsService {
 const metricsService = new RealtimeMetricsService(Asistencia);
 
 // Endpoint para métricas del dashboard
-app.get('/dashboard/metrics', async (req, res) => {
+app.get('/dashboard/metrics', metricsLimiter, async (req, res) => {
   try {
     const { period = '24h' } = req.query;
     const hours = period === '7d' ? 168 : period === '30d' ? 720 : 24;
@@ -4069,7 +4082,7 @@ app.get('/dashboard/metrics', async (req, res) => {
 });
 
 // Endpoint para accesos recientes
-app.get('/dashboard/recent-access', async (req, res) => {
+app.get('/dashboard/recent-access', metricsLimiter, async (req, res) => {
   try {
     const access = await metricsService.getRecentAccess(20);
 

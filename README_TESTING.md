@@ -530,3 +530,172 @@ Los siguientes eventos generan logs automáticamente:
 2. Verificar conectividad al endpoint
 3. Revisar logs de error (los errores de envío son silenciosos para evitar loops)
 
+## 🛡️ Rate Limiting
+
+El sistema implementa rate limiting para proteger endpoints críticos contra abuso y garantizar estabilidad.
+
+### Características
+
+- **Rate limiting por endpoint**: Configuraciones específicas según el tipo de endpoint
+- **Respuestas HTTP 429**: Con headers explicativos (Retry-After, X-RateLimit-*)
+- **Configuración por entorno**: Diferentes límites para desarrollo, staging y producción
+- **Tests E2E y unitarios**: Validación del comportamiento bajo límite
+
+### Endpoints Protegidos
+
+#### Login
+- **Límite**: 5 intentos en producción, 10 en otros ambientes
+- **Ventana**: 15 minutos
+- **Tracking**: Por IP + email para mayor precisión
+
+#### Autenticación (cambio de contraseña)
+- **Límite**: 20 requests en producción, 50 en otros ambientes
+- **Ventana**: 15 minutos
+
+#### CRUD Usuarios
+- **Límite**: 30 requests en producción, 100 en otros ambientes
+- **Ventana**: 15 minutos
+- **Endpoints**: GET, POST, PUT, DELETE /usuarios
+
+#### Dashboard/Métricas
+- **Límite**: 30 requests por minuto en producción, 100 en otros ambientes
+- **Ventana**: 1 minuto (más corta por ser computacionalmente costoso)
+- **Endpoints**: GET /dashboard/metrics, GET /dashboard/recent-access
+
+#### Asistencias
+- **Límite**: 60 requests por minuto en producción, 200 en otros ambientes
+- **Ventana**: 1 minuto
+- **Endpoints**: POST /asistencias/completa, POST /asistencias/validar-movimiento
+
+### Respuesta HTTP 429
+
+Cuando se excede el límite, el servidor retorna:
+
+**Status Code**: `429 Too Many Requests`
+
+**Headers**:
+```
+Retry-After: 900
+X-RateLimit-Limit: 5
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 2024-01-15T10:45:00.000Z
+```
+
+**Body**:
+```json
+{
+  "error": "Demasiadas solicitudes",
+  "message": "Has excedido el límite de solicitudes permitidas. Por favor, intenta nuevamente más tarde.",
+  "retryAfter": 900,
+  "resetTime": "2024-01-15T10:45:00.000Z",
+  "limit": 5,
+  "windowMs": 900000
+}
+```
+
+### Configuración
+
+#### Variables de Entorno
+
+```env
+# Deshabilitar rate limiting en desarrollo (opcional)
+SKIP_RATE_LIMIT=true
+
+# NODE_ENV determina la configuración automáticamente
+NODE_ENV=staging
+```
+
+#### Configuración en Staging
+
+Editar `backend/config/staging.js`:
+
+```javascript
+module.exports = {
+  RATE_LIMIT: {
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false
+  },
+  // ... otras configuraciones
+};
+```
+
+### Tests
+
+#### Tests Unitarios
+
+```bash
+cd backend
+npm test -- rateLimiter.test.js
+```
+
+#### Tests E2E
+
+```bash
+cd backend
+npm run test:e2e -- rateLimiting.e2e.test.js
+```
+
+Los tests verifican:
+- ✅ Aplicación de rate limiting en endpoints críticos
+- ✅ Respuesta HTTP 429 cuando se excede el límite
+- ✅ Presencia de headers Retry-After y X-RateLimit-*
+- ✅ Mensajes de error descriptivos
+
+### Comportamiento en Diferentes Ambientes
+
+#### Desarrollo
+- **General**: 1000 requests por 15 minutos (muy permisivo)
+- **Login**: 10 intentos por 15 minutos
+- **Puede deshabilitarse**: `SKIP_RATE_LIMIT=true`
+
+#### Staging
+- **General**: 100 requests por 15 minutos
+- **Login**: 10 intentos por 15 minutos
+- **Configurable**: En `backend/config/staging.js`
+
+#### Producción
+- **General**: 50 requests por 15 minutos (más restrictivo)
+- **Login**: 5 intentos por 15 minutos (muy restrictivo)
+- **Siempre activo**: No se puede deshabilitar
+
+### Troubleshooting
+
+#### Rate limiting muy restrictivo
+
+1. Verificar entorno:
+   ```bash
+   echo $NODE_ENV
+   ```
+
+2. Ajustar configuración en `backend/config/staging.js` si es staging
+
+3. En desarrollo, usar `SKIP_RATE_LIMIT=true` para deshabilitar
+
+#### No se aplica rate limiting
+
+1. Verificar que `express-rate-limit` esté instalado:
+   ```bash
+   npm list express-rate-limit
+   ```
+
+2. Verificar que los middlewares estén configurados en `index.js`
+
+3. Verificar que no esté deshabilitado en desarrollo con `SKIP_RATE_LIMIT`
+
+#### Headers no aparecen
+
+1. Verificar que `standardHeaders: true` esté configurado
+2. Los headers solo aparecen cuando se está cerca del límite o se excede
+3. Verificar en respuesta 429 que los headers estén presentes
+
+### Mejores Prácticas
+
+1. **Implementar retry con backoff exponencial** en el cliente cuando recibe 429
+2. **Respetar el header Retry-After** para saber cuándo reintentar
+3. **Monitorear logs** para detectar patrones de abuso
+4. **Ajustar límites** según patrones de uso reales
+5. **Usar rate limiting por IP** para endpoints públicos
+6. **Usar rate limiting por usuario** para endpoints autenticados (futuro)
+
