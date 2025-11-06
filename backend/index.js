@@ -132,8 +132,68 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 
 const app = express();
-app.use(cors());
+
+// Configuración CORS para web y app móvil
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (app móvil, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Lista de orígenes permitidos
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'https://movilesii.onrender.com',
+      /^https?:\/\/192\.168\.\d+\.\d+:\d+$/, // IPs locales para desarrollo móvil
+      /^https?:\/\/10\.\d+\.\d+\.\d+:\d+$/, // IPs de red local
+    ];
+    
+    // Verificar si el origen está permitido
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return allowed === origin;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      // En desarrollo, permitir todos los orígenes
+      if (process.env.NODE_ENV !== 'production') {
+        callback(null, true);
+      } else {
+        callback(new Error('No permitido por CORS'));
+      }
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Type', 'X-Device-ID', 'X-Requested-With'],
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count', 'X-Client-Type']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
+
+// Middleware para detectar y registrar tipo de cliente
+app.use((req, res, next) => {
+  // Detectar tipo de cliente desde headers o User-Agent
+  const userAgent = req.headers['user-agent'] || '';
+  const clientType = req.headers['x-client-type'] || 
+                     (userAgent.includes('Flutter') || userAgent.includes('Dart') ? 'mobile' : 'web');
+  
+  // Agregar información del cliente al request
+  req.clientType = clientType;
+  req.deviceId = req.headers['x-device-id'] || null;
+  
+  // Agregar header de respuesta para confirmar detección
+  res.setHeader('X-Client-Type', clientType);
+  
+  next();
+});
 
 // Conexión a MongoDB Atlas - ESPECIFICAR BASE DE DATOS ASISTENCIA
 mongoose.set('strictQuery', false);
@@ -1577,10 +1637,135 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// ==================== SERVICIO DE UNIFICACIÓN DE API ====================
+
+// Importar servicio de unificación
+const ApiUnificationService = require('./services/api_unification_service');
+const apiUnificationService = new ApiUnificationService();
+
+// Middleware para registrar solicitudes (después de detección de cliente)
+app.use((req, res, next) => {
+  // Registrar solicitud después de que se complete
+  const originalSend = res.send;
+  res.send = function(data) {
+    const success = res.statusCode < 400;
+    if (req.clientType) {
+      apiUnificationService.recordRequest(req.clientType, success);
+    }
+    return originalSend.call(this, data);
+  };
+  next();
+});
+
+// Endpoint para verificar compatibilidad de API
+app.get('/api/compatibility/check', async (req, res) => {
+  try {
+    const clientType = req.clientType || 'unknown';
+    const deviceId = req.deviceId || null;
+    
+    res.json({
+      success: true,
+      compatible: true,
+      client: {
+        type: clientType,
+        deviceId: deviceId,
+        detected: true
+      },
+      server: {
+        version: '1.0.0',
+        database: 'ASISTENCIA',
+        unified: true
+      },
+      endpoints: {
+        baseUrl: `${req.protocol}://${req.get('host')}`,
+        health: '/health',
+        login: '/login',
+        alumnos: '/alumnos',
+        asistencias: '/asistencias',
+        usuarios: '/usuarios'
+      },
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// Endpoint para obtener información de la API
+app.get('/api/info', async (req, res) => {
+  try {
+    const dbState = mongoose.connection.readyState;
+    const dbStatus = dbState === 1 ? 'connected' : 'disconnected';
+    
+    res.json({
+      name: 'API Unificada - Sistema de Asistencia',
+      version: '1.0.0',
+      description: 'API REST unificada para aplicación web y móvil',
+      database: {
+        type: 'MongoDB',
+        name: 'ASISTENCIA',
+        unified: true,
+        connection: dbStatus
+      },
+      clients: {
+        web: {
+          supported: true,
+          cors: true,
+          headers: ['Content-Type', 'Authorization', 'X-Client-Type']
+        },
+        mobile: {
+          supported: true,
+          headers: ['Content-Type', 'Authorization', 'X-Client-Type', 'X-Device-ID']
+        }
+      },
+      endpoints: {
+        authentication: ['POST /login'],
+        alumnos: ['GET /alumnos', 'GET /alumnos/:codigo'],
+        asistencias: ['GET /asistencias', 'POST /asistencias', 'POST /asistencias/completa'],
+        usuarios: ['GET /usuarios', 'POST /usuarios'],
+        sistema: ['GET /health', 'GET /api/compatibility/check', 'GET /api/info', 'GET /api/unification/stats']
+      },
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error obteniendo información de API',
+      details: err.message
+    });
+  }
+});
+
+// Endpoint para obtener estadísticas de unificación
+app.get('/api/unification/stats', async (req, res) => {
+  try {
+    const report = apiUnificationService.generateUnificationReport();
+    // Agregar información de conexión a BD
+    const dbState = mongoose.connection.readyState;
+    report.database.connection = dbState === 1 ? 'connected' : 'disconnected';
+    report.database.dbName = mongoose.connection.db?.databaseName || 'ASISTENCIA';
+    
+    res.json({
+      success: true,
+      ...report
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Error obteniendo estadísticas de unificación',
+      details: err.message
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
   console.log(`✅ Backend completo con ${Object.keys(require('./package.json').dependencies).length} dependencias`);
   console.log(`✅ MongoDB conectado a base de datos: ASISTENCIA`);
-  console.log(`✅ Endpoints disponibles: 30+ rutas REST (incluye ML)`);
+  console.log(`✅ API Unificada: Web y Mobile`);
+  console.log(`✅ CORS configurado para ambos clientes`);
+  console.log(`✅ Endpoints disponibles: REST API unificada`);
+  console.log(`✅ Health check: http://localhost:${PORT}/health`);
 });
