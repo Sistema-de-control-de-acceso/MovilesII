@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../viewmodels/student_status_viewmodel.dart';
 import '../widgets/status_widgets.dart';
+import '../widgets/student_basic_info_widget.dart';
 import 'student_status_detail_view.dart';
 import 'student_search_view.dart';
 
@@ -166,47 +167,14 @@ class _StudentStatusViewState extends State<StudentStatusView>
     }
 
     return ListView.builder(
-      padding: EdgeInsets.symmetric(horizontal: 16),
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: studentStatusViewModel.searchResults.length,
       itemBuilder: (context, index) {
         final estudiante = studentStatusViewModel.searchResults[index];
-        return Card(
-          margin: EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: estudiante.isActive ? Colors.green[100] : Colors.red[100],
-              child: Icon(
-                Icons.person,
-                color: estudiante.isActive ? Colors.green : Colors.red,
-              ),
-            ),
-            title: Text(
-              estudiante.nombreCompleto,
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Código: ${estudiante.codigoUniversitario}'),
-                Text('DNI: ${estudiante.dni}'),
-                Text('${estudiante.siglasFacultad} - ${estudiante.siglasEscuela}'),
-              ],
-            ),
-            trailing: Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: estudiante.isActive ? Colors.green[100] : Colors.red[100],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                estudiante.isActive ? 'Activo' : 'Inactivo',
-                style: TextStyle(
-                  color: estudiante.isActive ? Colors.green[700] : Colors.red[700],
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+        return Padding(
+          padding: EdgeInsets.only(bottom: 12),
+          child: StudentBasicInfoCompactWidget(
+            estudiante: estudiante,
             onTap: () {
               Navigator.push(
                 context,
@@ -249,25 +217,10 @@ class _StudentStatusViewState extends State<StudentStatusView>
           itemCount: studentStatusViewModel.recentStudents.length,
           itemBuilder: (context, index) {
             final estudiante = studentStatusViewModel.recentStudents[index];
-            return Card(
-              margin: EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.blue[100],
-                  child: Icon(Icons.history, color: Colors.blue),
-                ),
-                title: Text(
-                  estudiante.nombreCompleto,
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Código: ${estudiante.codigoUniversitario}'),
-                    Text('${estudiante.siglasFacultad} - ${estudiante.siglasEscuela}'),
-                  ],
-                ),
-                trailing: Icon(Icons.arrow_forward_ios, size: 16),
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: StudentBasicInfoCompactWidget(
+                estudiante: estudiante,
                 onTap: () {
                   Navigator.push(
                     context,
@@ -312,25 +265,10 @@ class _StudentStatusViewState extends State<StudentStatusView>
           itemCount: studentStatusViewModel.studentsWithAlerts.length,
           itemBuilder: (context, index) {
             final estudiante = studentStatusViewModel.studentsWithAlerts[index];
-            return Card(
-              margin: EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.orange[100],
-                  child: Icon(Icons.warning, color: Colors.orange),
-                ),
-                title: Text(
-                  estudiante.nombreCompleto,
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Código: ${estudiante.codigoUniversitario}'),
-                    Text('${estudiante.siglasFacultad} - ${estudiante.siglasEscuela}'),
-                  ],
-                ),
-                trailing: Icon(Icons.arrow_forward_ios, size: 16),
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: StudentBasicInfoCompactWidget(
+                estudiante: estudiante,
                 onTap: () {
                   Navigator.push(
                     context,

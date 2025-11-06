@@ -4,6 +4,7 @@ import '../../viewmodels/nfc_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/status_widgets.dart';
+import '../../widgets/student_basic_info_widget.dart';
 import '../login_view.dart';
 import '../student_verification_view.dart';
 import '../admin/presencia_dashboard_view.dart';
@@ -297,71 +298,11 @@ class _UserNfcViewState extends State<UserNfcView> with WidgetsBindingObserver {
   Widget _buildStudentInfo(NfcViewModel nfcViewModel) {
     final alumno = nfcViewModel.scannedAlumno!;
 
-    return Container(
-      width: double.infinity,
+    // Usar el nuevo widget de información básica del estudiante
+    return StudentBasicInfoWidget(
+      estudiante: alumno,
+      showStatusBadge: true,
       padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Información del Estudiante',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[700],
-            ),
-          ),
-          SizedBox(height: 12),
-          _buildInfoRow('Nombre', alumno.nombreCompleto),
-          _buildInfoRow('Código', alumno.codigoUniversitario),
-          _buildInfoRow(
-            'Facultad',
-            '${alumno.facultad} (${alumno.siglasFacultad})',
-          ),
-          _buildInfoRow(
-            'Escuela',
-            '${alumno.escuelaProfesional} (${alumno.siglasEscuela})',
-          ),
-          _buildInfoRow('Estado', alumno.isActive ? 'Activo' : 'Inactivo'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              '$label:',
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(value, style: TextStyle(color: Colors.grey[800])),
-          ),
-        ],
-      ),
     );
   }
 
