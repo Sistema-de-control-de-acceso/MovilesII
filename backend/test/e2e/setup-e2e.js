@@ -19,6 +19,96 @@ app.get('/api/info', (req, res) => {
   });
 });
 
+// Agregar endpoints de health monitoring para tests
+const HealthMonitoringService = require('../../services/health_monitoring_service');
+const healthMonitoring = new HealthMonitoringService();
+
+app.get('/health/detailed', async (req, res) => {
+  try {
+    const health = await healthMonitoring.getDetailedHealth();
+    const statusCode = health.status === 'unhealthy' ? 503 : 200;
+    res.status(statusCode).json(health);
+  } catch (err) {
+    res.status(500).json({
+      status: 'unhealthy',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+app.get('/health/incidents', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const filters = {
+      status: req.query.status,
+      resolved: req.query.resolved === 'true' ? true : 
+                req.query.resolved === 'false' ? false : undefined,
+      since: req.query.since
+    };
+    const history = healthMonitoring.getIncidentHistory(limit, filters);
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/health/incidents/stats', async (req, res) => {
+  try {
+    const sinceHours = parseInt(req.query.hours) || 24;
+    const stats = healthMonitoring.getIncidentStats(sinceHours);
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/health/incidents/:id/resolve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const incident = healthMonitoring.resolveIncident(id);
+    if (incident) {
+      res.json(incident);
+    } else {
+      res.status(404).json({ error: 'Incidente no encontrado', incidentId: id });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/health/thresholds', async (req, res) => {
+  try {
+    const thresholds = req.body;
+    healthMonitoring.setAlertThresholds(thresholds);
+    res.json({
+      success: true,
+      thresholds: healthMonitoring.getAlertThresholds(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/health/thresholds', async (req, res) => {
+  try {
+    const thresholds = healthMonitoring.getAlertThresholds();
+    res.json({ thresholds, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/health/summary', async (req, res) => {
+  try {
+    const summary = await healthMonitoring.getHealthSummary();
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Función para inicializar rutas (llamada desde los tests)
 function setupRoutes() {
   // Importar modelos
