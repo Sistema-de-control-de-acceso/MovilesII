@@ -5,6 +5,7 @@ const Asignacion = require('./models/Asignacion');
 const { Bus, ViajeBus } = require('./models/Bus');
 const SugerenciaBus = require('./models/SugerenciaBus');
 const { BaselineData, ProjectCost } = require('./models/BaselineData');
+const { DataVersion, DeviceSync, PendingChange } = require('./models/DataVersion');
 // ==================== ENDPOINTS PUNTOS DE CONTROL ====================
 
 // Listar todos los puntos de control
@@ -1428,6 +1429,203 @@ app.get('/visitas', async (req, res) => {
 // ==================== ENDPOINTS DE SINCRONIZACIÓN Y BACKUP ====================
 
 // Sincronización bidireccional - obtener cambios desde timestamp
+// ==================== ENDPOINTS DE SINCRONIZACIÓN BIDIRECCIONAL ====================
+
+// Importar servicio de sincronización bidireccional
+const BidirectionalSyncService = require('./services/bidirectional_sync_service');
+
+// Instancia de servicio
+const syncService = new BidirectionalSyncService(
+  DataVersion,
+  DeviceSync,
+  PendingChange,
+  Asistencia,
+  Presencia
+);
+
+// Registrar dispositivo
+app.post('/sync/register-device', async (req, res) => {
+  try {
+    const { device_id, device_name, device_type, app_version } = req.body;
+    
+    if (!device_id) {
+      return res.status(400).json({ error: 'device_id es requerido' });
+    }
+
+    const device = await syncService.registerDevice(device_id, {
+      device_name,
+      device_type,
+      app_version
+    });
+
+    res.json({
+      success: true,
+      device,
+      sync_token: device.sync_token
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error registrando dispositivo', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener cambios del servidor (pull)
+app.get('/sync/pull', async (req, res) => {
+  try {
+    const { device_id, last_sync, collections } = req.query;
+    
+    if (!device_id) {
+      return res.status(400).json({ error: 'device_id es requerido' });
+    }
+
+    const collectionsArray = collections ? collections.split(',') : [];
+    const lastSync = last_sync ? new Date(last_sync) : null;
+
+    const result = await syncService.getServerChanges(device_id, lastSync, collectionsArray);
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo cambios del servidor', 
+      details: err.message 
+    });
+  }
+});
+
+// Subir cambios del cliente (push)
+app.post('/sync/push', async (req, res) => {
+  try {
+    const { device_id, changes } = req.body;
+    
+    if (!device_id || !changes) {
+      return res.status(400).json({ 
+        error: 'device_id y changes son requeridos' 
+      });
+    }
+
+    const result = await syncService.uploadClientChanges(device_id, changes);
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error subiendo cambios', 
+      details: err.message 
+    });
+  }
+});
+
+// Sincronización bidireccional completa
+app.post('/sync/bidirectional', async (req, res) => {
+  try {
+    const { 
+      device_id, 
+      device_info, 
+      last_sync, 
+      client_changes 
+    } = req.body;
+    
+    if (!device_id) {
+      return res.status(400).json({ error: 'device_id es requerido' });
+    }
+
+    const result = await syncService.performBidirectionalSync(
+      device_id,
+      device_info || {},
+      last_sync ? new Date(last_sync) : null,
+      client_changes || []
+    );
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error en sincronización bidireccional', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener conflictos pendientes
+app.get('/sync/conflicts', async (req, res) => {
+  try {
+    const { device_id } = req.query;
+    
+    const conflicts = await syncService.getPendingConflicts(device_id || null);
+
+    res.json({
+      success: true,
+      conflicts,
+      count: conflicts.length
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo conflictos', 
+      details: err.message 
+    });
+  }
+});
+
+// Resolver conflicto
+app.post('/sync/conflicts/:conflictId/resolve', async (req, res) => {
+  try {
+    const { conflictId } = req.params;
+    const { strategy, resolved_by, resolution_data } = req.body;
+    
+    if (!strategy || !resolved_by) {
+      return res.status(400).json({ 
+        error: 'strategy y resolved_by son requeridos' 
+      });
+    }
+
+    const result = await syncService.resolveConflict(
+      conflictId,
+      strategy,
+      resolved_by,
+      resolution_data
+    );
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error resolviendo conflicto', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener versión de un registro
+app.get('/sync/version/:collection/:recordId', async (req, res) => {
+  try {
+    const { collection, recordId } = req.params;
+    
+    const version = await syncService.getOrCreateVersion(collection, recordId);
+
+    res.json({
+      success: true,
+      version
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo versión', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints legacy (mantener compatibilidad)
 app.get('/sync/changes/:timestamp', async (req, res) => {
   try {
     const timestamp = new Date(req.params.timestamp);
@@ -1448,7 +1646,6 @@ app.get('/sync/changes/:timestamp', async (req, res) => {
   }
 });
 
-// Recibir cambios del cliente para sincronización
 app.post('/sync/upload', async (req, res) => {
   try {
     const { changes } = req.body;
