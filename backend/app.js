@@ -35,6 +35,7 @@ require('./models/PuntoControl');
 require('./models/Asignacion');
 require('./models/Bus');
 require('./models/SugerenciaBus');
+require('./models/BaselineData');
 
 // Importar todas las rutas desde index.js
 // Nota: En producción, las rutas están en index.js
