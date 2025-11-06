@@ -2,10 +2,12 @@ import 'package:flutter/foundation.dart';
 import '../models/usuario_model.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart';
+import '../services/logging_service.dart';
 
 class AuthViewModel extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   final SessionService _sessionService = SessionService();
+  final LoggingService _logging = LoggingService();
 
   UsuarioModel? _currentUser;
   bool _isLoading = false;
@@ -25,17 +27,29 @@ class AuthViewModel extends ChangeNotifier {
     _setLoading(true);
     _clearError();
 
+    _logging.info('Intento de login', metadata: {'email': email});
+
     try {
       _currentUser = await _apiService.login(email, password);
+
+      // Establecer userId en logging para correlación
+      _logging.setUserId(_currentUser?.id);
 
       // Inicializar sesión después del login exitoso
       await _sessionService.initializeSession();
       _startUserSession();
 
+      _logging.info('Login exitoso', metadata: {
+        'userId': _currentUser?.id,
+        'email': email,
+        'rango': _currentUser?.rango
+      });
+
       _setLoading(false);
       notifyListeners();
       return true;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logging.error('Error en login', error: e, stackTrace: stackTrace, metadata: {'email': email});
       _setError(e.toString());
       _setLoading(false);
       return false;
@@ -44,8 +58,11 @@ class AuthViewModel extends ChangeNotifier {
 
   // Logout
   void logout() {
+    final userId = _currentUser?.id;
+    _logging.info('Logout', metadata: {'userId': userId});
     _sessionService.endSession();
     _currentUser = null;
+    _logging.setUserId(null);
     _clearError();
     notifyListeners();
   }

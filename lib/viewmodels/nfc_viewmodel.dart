@@ -8,12 +8,14 @@ import '../services/hybrid_api_service.dart';
 import '../services/nfc_service.dart';
 import '../services/autorizacion_service.dart';
 import '../services/api_service.dart';
+import '../services/logging_service.dart';
 
 class NfcViewModel extends ChangeNotifier {
   final HybridApiService _apiService = HybridApiService();
   final ApiService _apiServiceDirect = ApiService();
   final NfcService _nfcService = NfcService();
   final AutorizacionService _autorizacionService = AutorizacionService();
+  final LoggingService _logging = LoggingService();
 
   bool _isScanning = false;
   bool _isLoading = false;

@@ -10,6 +10,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Agregar endpoint /api/info para tests
+app.get('/api/info', (req, res) => {
+  res.json({
+    name: 'moviles2-backend',
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'test'
+  });
+});
+
 // Función para inicializar rutas (llamada desde los tests)
 function setupRoutes() {
   // Importar modelos
@@ -25,6 +34,18 @@ function setupRoutes() {
   const Presencia = mongoose.model('presencia');
   const bcrypt = require('bcrypt');
   const { v4: uuidv4 } = require('uuid');
+
+  // Ruta para registrar asistencia completa
+  app.post('/asistencias/completa', async (req, res) => {
+    try {
+      const asistenciaData = req.body;
+      const asistencia = new Asistencia(asistenciaData);
+      await asistencia.save();
+      res.status(201).json(asistencia);
+    } catch (err) {
+      res.status(500).json({ error: 'Error al registrar asistencia completa', details: err.message });
+    }
+  });
 
   // Rutas básicas para tests
   app.post('/login', async (req, res) => {
