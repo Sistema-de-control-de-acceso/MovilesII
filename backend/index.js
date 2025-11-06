@@ -2,6 +2,7 @@
 const { v4: uuidv4 } = require('uuid');
 const PuntoControl = require('./models/PuntoControl');
 const Asignacion = require('./models/Asignacion');
+const { Bus, ViajeBus } = require('./models/Bus');
 // ==================== ENDPOINTS PUNTOS DE CONTROL ====================
 
 // Listar todos los puntos de control
@@ -3936,6 +3937,435 @@ app.post('/api/ml/clustering/validate', async (req, res) => {
     res.status(500).json({
       error: 'Error validando clustering',
       details: err.message
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE EFICIENCIA DE BUSES ====================
+
+// Importar servicio de eficiencia de buses
+const BusEfficiencyService = require('./ml/bus_efficiency_service');
+
+// Instancia de servicio
+const busEfficiencyService = new BusEfficiencyService(Bus, ViajeBus);
+
+// Endpoints CRUD para Buses
+// Listar todos los buses
+app.get('/buses', async (req, res) => {
+  try {
+    const buses = await Bus.find();
+    res.json({
+      success: true,
+      buses,
+      count: buses.length
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al obtener buses', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener bus por ID
+app.get('/buses/:id', async (req, res) => {
+  try {
+    const bus = await Bus.findById(req.params.id);
+    if (!bus) {
+      return res.status(404).json({ error: 'Bus no encontrado' });
+    }
+    res.json({
+      success: true,
+      bus
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al obtener bus', 
+      details: err.message 
+    });
+  }
+});
+
+// Crear nuevo bus
+app.post('/buses', async (req, res) => {
+  try {
+    const { placa, numero_bus, capacidad_maxima, tipo_bus, estado } = req.body;
+    
+    if (!placa || !numero_bus || !capacidad_maxima) {
+      return res.status(400).json({ 
+        error: 'Placa, número de bus y capacidad máxima son requeridos' 
+      });
+    }
+
+    const bus = new Bus({
+      _id: uuidv4(),
+      placa,
+      numero_bus,
+      capacidad_maxima: parseInt(capacidad_maxima),
+      tipo_bus: tipo_bus || 'regular',
+      estado: estado || 'activo',
+      fecha_creacion: new Date(),
+      fecha_actualizacion: new Date()
+    });
+
+    await bus.save();
+    res.status(201).json({
+      success: true,
+      bus
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al crear bus', 
+      details: err.message 
+    });
+  }
+});
+
+// Actualizar bus
+app.put('/buses/:id', async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+    updateData.fecha_actualizacion = new Date();
+
+    const bus = await Bus.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!bus) {
+      return res.status(404).json({ error: 'Bus no encontrado' });
+    }
+    res.json({
+      success: true,
+      bus
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al actualizar bus', 
+      details: err.message 
+    });
+  }
+});
+
+// Agregar optimización a un bus
+app.post('/buses/:id/optimizaciones', async (req, res) => {
+  try {
+    const { tipo, descripcion, costo, impacto_esperado } = req.body;
+    
+    if (!tipo || !descripcion) {
+      return res.status(400).json({ 
+        error: 'Tipo y descripción son requeridos' 
+      });
+    }
+
+    const bus = await Bus.findById(req.params.id);
+    if (!bus) {
+      return res.status(404).json({ error: 'Bus no encontrado' });
+    }
+
+    if (!bus.optimizaciones_aplicadas) {
+      bus.optimizaciones_aplicadas = [];
+    }
+
+    const optimizacion = {
+      tipo,
+      descripcion,
+      fecha_aplicacion: new Date(),
+      costo: costo || 0,
+      impacto_esperado: impacto_esperado || 0
+    };
+
+    bus.optimizaciones_aplicadas.push(optimizacion);
+    bus.fecha_optimizacion = new Date();
+    bus.fecha_actualizacion = new Date();
+
+    await bus.save();
+    res.json({
+      success: true,
+      bus,
+      optimizacion
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al agregar optimización', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints CRUD para Viajes de Buses
+// Listar viajes de buses
+app.get('/viajes-buses', async (req, res) => {
+  try {
+    const { bus_id, ruta, estado, startDate, endDate } = req.query;
+    const query = {};
+
+    if (bus_id) query.bus_id = bus_id;
+    if (ruta) query.ruta = ruta;
+    if (estado) query.estado = estado;
+    if (startDate || endDate) {
+      query.fecha_salida = {};
+      if (startDate) query.fecha_salida.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.fecha_salida.$lte = end;
+      }
+    }
+
+    const viajes = await ViajeBus.find(query).sort({ fecha_salida: -1 });
+    res.json({
+      success: true,
+      viajes,
+      count: viajes.length
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al obtener viajes', 
+      details: err.message 
+    });
+  }
+});
+
+// Crear nuevo viaje
+app.post('/viajes-buses', async (req, res) => {
+  try {
+    const {
+      bus_id,
+      ruta,
+      fecha_salida,
+      fecha_llegada,
+      pasajeros_transportados,
+      capacidad_disponible,
+      distancia_km,
+      tiempo_viaje_minutos,
+      costo_operacion,
+      estado
+    } = req.body;
+
+    if (!bus_id || !ruta || !fecha_salida) {
+      return res.status(400).json({ 
+        error: 'bus_id, ruta y fecha_salida son requeridos' 
+      });
+    }
+
+    // Verificar que el bus existe
+    const bus = await Bus.findById(bus_id);
+    if (!bus) {
+      return res.status(404).json({ error: 'Bus no encontrado' });
+    }
+
+    // Calcular tasa de ocupación
+    const capacidad = bus.capacidad_maxima;
+    const pasajeros = pasajeros_transportados || 0;
+    const tasaOcupacion = capacidad > 0 ? (pasajeros / capacidad) * 100 : 0;
+
+    const viaje = new ViajeBus({
+      _id: uuidv4(),
+      bus_id,
+      ruta,
+      fecha_salida: new Date(fecha_salida),
+      fecha_llegada: fecha_llegada ? new Date(fecha_llegada) : null,
+      pasajeros_transportados: pasajeros,
+      capacidad_disponible: capacidad_disponible || (capacidad - pasajeros),
+      distancia_km: distancia_km || 0,
+      tiempo_viaje_minutos: tiempo_viaje_minutos || 0,
+      costo_operacion: costo_operacion || 0,
+      estado: estado || 'programado',
+      tasa_ocupacion: parseFloat(tasaOcupacion.toFixed(2)),
+      fecha_creacion: new Date()
+    });
+
+    await viaje.save();
+    res.status(201).json({
+      success: true,
+      viaje
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al crear viaje', 
+      details: err.message 
+    });
+  }
+});
+
+// Actualizar viaje
+app.put('/viajes-buses/:id', async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+
+    // Si se actualiza pasajeros, recalcular tasa de ocupación
+    if (updateData.pasajeros_transportados !== undefined) {
+      const viaje = await ViajeBus.findById(req.params.id);
+      if (viaje) {
+        const bus = await Bus.findById(viaje.bus_id);
+        if (bus) {
+          const capacidad = bus.capacidad_maxima;
+          const pasajeros = updateData.pasajeros_transportados;
+          updateData.tasa_ocupacion = capacidad > 0 
+            ? parseFloat(((pasajeros / capacidad) * 100).toFixed(2))
+            : 0;
+        }
+      }
+    }
+
+    const viaje = await ViajeBus.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!viaje) {
+      return res.status(404).json({ error: 'Viaje no encontrado' });
+    }
+    res.json({
+      success: true,
+      viaje
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al actualizar viaje', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints de Reportes de Eficiencia
+// Obtener métricas de utilización
+app.get('/api/buses/efficiency/utilization', async (req, res) => {
+  try {
+    const { startDate, endDate, busId, ruta, groupBy } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'startDate y endDate son requeridos' 
+      });
+    }
+
+    const dateRange = {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    };
+
+    const metrics = await busEfficiencyService.calculateUtilizationMetrics(dateRange, {
+      busId,
+      ruta,
+      groupBy: groupBy || 'day'
+    });
+
+    res.json({
+      success: true,
+      ...metrics
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error calculando métricas de utilización', 
+      details: err.message 
+    });
+  }
+});
+
+// Generar comparativo antes/después
+app.get('/api/buses/efficiency/comparison', async (req, res) => {
+  try {
+    const { busId, optimizationDate, beforeStart, beforeEnd, afterStart, afterEnd } = req.query;
+
+    if (!busId || !optimizationDate) {
+      return res.status(400).json({ 
+        error: 'busId y optimizationDate son requeridos' 
+      });
+    }
+
+    const dateRange = (beforeStart && beforeEnd && afterStart && afterEnd) ? {
+      beforeStart: new Date(beforeStart),
+      beforeEnd: new Date(beforeEnd),
+      afterStart: new Date(afterStart),
+      afterEnd: new Date(afterEnd)
+    } : null;
+
+    const comparison = await busEfficiencyService.generateBeforeAfterComparison(
+      busId,
+      optimizationDate,
+      dateRange
+    );
+
+    res.json({
+      success: true,
+      ...comparison
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando comparativo', 
+      details: err.message 
+    });
+  }
+});
+
+// Calcular ROI
+app.get('/api/buses/efficiency/roi', async (req, res) => {
+  try {
+    const { busId, optimizationDate, beforeStart, beforeEnd, afterStart, afterEnd } = req.query;
+
+    if (!busId || !optimizationDate) {
+      return res.status(400).json({ 
+        error: 'busId y optimizationDate son requeridos' 
+      });
+    }
+
+    const dateRange = (beforeStart && beforeEnd && afterStart && afterEnd) ? {
+      beforeStart: new Date(beforeStart),
+      beforeEnd: new Date(beforeEnd),
+      afterStart: new Date(afterStart),
+      afterEnd: new Date(afterEnd)
+    } : null;
+
+    const roi = await busEfficiencyService.calculateROI(
+      busId,
+      optimizationDate,
+      dateRange
+    );
+
+    res.json({
+      success: true,
+      ...roi
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error calculando ROI', 
+      details: err.message 
+    });
+  }
+});
+
+// Generar reporte completo de eficiencia
+app.get('/api/buses/efficiency/report', async (req, res) => {
+  try {
+    const { 
+      startDate, 
+      endDate, 
+      busId, 
+      includeComparison, 
+      includeROI, 
+      optimizationDate 
+    } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'startDate y endDate son requeridos' 
+      });
+    }
+
+    const dateRange = {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    };
+
+    const report = await busEfficiencyService.generateEfficiencyReport(dateRange, {
+      busId: busId || null,
+      includeComparison: includeComparison === 'true',
+      includeROI: includeROI === 'true',
+      optimizationDate: optimizationDate || null
+    });
+
+    res.json({
+      success: true,
+      ...report
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando reporte de eficiencia', 
+      details: err.message 
     });
   }
 });
