@@ -991,3 +991,252 @@ curl -X POST http://localhost:3000/health/thresholds \
 5. **Integrar con sistemas externos**: Conectar con sistemas de monitoreo (Datadog, New Relic, etc.)
 6. **Automatizar respuestas**: Configurar acciones automáticas para incidentes críticos
 
+## 🚀 Pruebas de Carga y Análisis de Performance
+
+Sistema completo de pruebas de carga para garantizar que el sistema soporte la carga esperada y mantenga tiempos de respuesta óptimos.
+
+### Características
+
+- ✅ Tests de carga para escenarios de uso pico (horario de entrada/salida)
+- ✅ Simulación de carga concurrente (mínimo 500 usuarios simultáneos)
+- ✅ Tiempo de respuesta promedio < 200ms para operaciones críticas
+- ✅ Tasa de éxito > 99.5% bajo carga normal
+- ✅ Identificación de cuellos de botella
+- ✅ Reporte de métricas de performance (latencia P50, P95, P99)
+- ✅ Tests de stress para identificar punto de quiebre
+- ✅ Pruebas de resistencia (soak tests) de 24 horas
+- ✅ Plan de optimización basado en resultados
+
+### Instalación
+
+#### K6 (Herramienta de Testing)
+
+**macOS:**
+```bash
+brew install k6
+```
+
+**Windows:**
+```bash
+choco install k6
+```
+
+**Linux:**
+```bash
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update
+sudo apt-get install k6
+```
+
+**Descarga directa:** https://k6.io/docs/getting-started/installation/
+
+### Estructura
+
+```
+backend/load-testing/
+├── k6.config.js              # Configuración base
+├── scenarios/
+│   ├── peak-hours.js         # Horario pico entrada/salida
+│   ├── concurrent-users.js    # 500 usuarios simultáneos
+│   ├── stress-test.js        # Test de stress (punto de quiebre)
+│   └── soak-test.js          # Prueba de resistencia 24h
+├── scripts/
+│   ├── run-load-test.sh      # Script bash
+│   ├── run-load-test.ps1     # Script PowerShell
+│   ├── analyze-results.js    # Análisis de resultados
+│   └── setup-staging-data.js # Configurar datos de prueba
+└── README.md                  # Documentación completa
+```
+
+### Uso Rápido
+
+#### 1. Configurar Datos de Prueba
+
+```bash
+cd backend/load-testing
+node scripts/setup-staging-data.js
+```
+
+#### 2. Ejecutar Prueba de Carga
+
+**Linux/macOS:**
+```bash
+./scripts/run-load-test.sh peak-hours http://localhost:3000
+```
+
+**Windows:**
+```powershell
+.\scripts\run-load-test.ps1 peak-hours http://localhost:3000
+```
+
+**Directo:**
+```bash
+k6 run --env BASE_URL=http://localhost:3000 scenarios/peak-hours.js
+```
+
+#### 3. Analizar Resultados
+
+```bash
+node scripts/analyze-results.js results/peak-hours-20240115-120000.json
+```
+
+### Escenarios Disponibles
+
+#### Peak Hours (Horario Pico)
+```bash
+k6 run scenarios/peak-hours.js
+```
+- Simula 200 usuarios durante horario pico
+- Login → Consulta alumno → Registro asistencia
+- Duración: ~12 minutos
+
+#### Concurrent Users (Usuarios Concurrentes)
+```bash
+k6 run scenarios/concurrent-users.js
+```
+- Simula 500 usuarios simultáneos
+- Operaciones variadas
+- Duración: ~24 minutos
+
+#### Stress Test
+```bash
+k6 run scenarios/stress-test.js
+```
+- Incremento gradual hasta 1000 usuarios
+- Identifica punto de quiebre
+- Duración: ~20 minutos
+
+#### Soak Test (24 horas)
+```bash
+k6 run --duration 24h scenarios/soak-test.js
+```
+- 50 usuarios constantes
+- Detecta memory leaks
+- Duración: 24 horas
+
+### Métricas y Thresholds
+
+#### Thresholds Configurados
+
+```javascript
+{
+  // Tiempo de respuesta promedio < 200ms
+  http_req_duration: ['p(50)<200', 'p(95)<500', 'p(99)<1000'],
+  
+  // Tasa de éxito > 99.5%
+  http_req_failed: ['rate<0.005'],
+  
+  // Checks deben pasar
+  checks: ['rate>0.995']
+}
+```
+
+#### Métricas Reportadas
+
+- **Response Time**: Min, Max, Promedio, P50, P95, P99
+- **Success Rate**: Total requests, Failed requests, Tasa de éxito
+- **Throughput**: Requests por segundo
+- **Checks**: Checks pasados/fallidos, Tasa de checks
+
+### Interpretación de Resultados
+
+#### ✅ Prueba Exitosa
+
+- P50 < 200ms
+- P95 < 500ms
+- P99 < 1000ms
+- Success rate > 99.5%
+- Checks rate > 99.5%
+
+#### ⚠️ Problemas Detectados
+
+**Tiempo de respuesta alto:**
+- Revisar queries de BD
+- Implementar caching
+- Optimizar índices
+
+**Tasa de éxito baja:**
+- Revisar logs de errores
+- Verificar capacidad de BD
+- Revisar rate limiting
+
+**P95 alto:**
+- Identificar endpoints lentos
+- Optimizar operaciones costosas
+- Revisar conexiones de BD
+
+### Integración con Monitoreo
+
+Durante las pruebas, monitorear el sistema:
+
+```bash
+# En otra terminal
+curl http://localhost:3000/health/detailed
+```
+
+O acceder al dashboard:
+```
+http://localhost:3000/dashboard/health.html
+```
+
+### Reportes
+
+El script de análisis genera:
+
+1. **Reporte en consola**: Métricas clave y recomendaciones
+2. **Archivo JSON**: Análisis completo para procesamiento
+3. **Recomendaciones**: Plan de optimización basado en resultados
+
+### Troubleshooting
+
+#### K6 no está instalado
+```bash
+k6 version
+# Si no está, seguir instrucciones de instalación
+```
+
+#### Error de conexión
+```bash
+curl http://localhost:3000/health
+```
+
+#### Resultados no se generan
+```bash
+mkdir -p results
+chmod 755 results
+```
+
+### Documentación Completa
+
+Ver `backend/load-testing/README.md` para documentación detallada.
+
+### Integración CI/CD
+
+Las pruebas de carga están integradas en CI/CD. Ver `backend/load-testing/CI_CD_INTEGRATION.md` para detalles completos.
+
+**Sistemas soportados:**
+- ✅ GitHub Actions (`.github/workflows/load-testing.yml`)
+- ✅ GitLab CI (`.gitlab-ci.yml`)
+- ✅ Jenkins (`Jenkinsfile`)
+- ✅ Scripts genéricos (`scripts/ci-run.sh`, `scripts/ci-run.ps1`)
+
+**Ejecución automática:**
+- Push a main/master/develop
+- Pull requests
+- Manualmente desde UI
+
+**Resultados:**
+- Artifacts guardados por 30 días
+- Comentarios automáticos en PRs (GitHub)
+- Reportes JSON y CSV
+
+### Próximos Pasos
+
+1. ✅ **Automatizar en CI/CD**: Integrado (ver `CI_CD_INTEGRATION.md`)
+2. **Alertas automáticas**: Notificar cuando thresholds fallen
+3. **Dashboards**: Visualización en tiempo real
+4. **Comparación histórica**: Comparar resultados entre ejecuciones
+5. **Optimización continua**: Implementar mejoras basadas en resultados
+
