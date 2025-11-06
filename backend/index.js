@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const PuntoControl = require('./models/PuntoControl');
 const Asignacion = require('./models/Asignacion');
 const { Bus, ViajeBus } = require('./models/Bus');
+const SugerenciaBus = require('./models/SugerenciaBus');
 // ==================== ENDPOINTS PUNTOS DE CONTROL ====================
 
 // Listar todos los puntos de control
@@ -4365,6 +4366,283 @@ app.get('/api/buses/efficiency/report', async (req, res) => {
   } catch (err) {
     res.status(500).json({ 
       error: 'Error generando reporte de eficiencia', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE SUGERENCIAS DE BUSES ====================
+
+// Importar servicio de sugerencias de buses
+const BusSuggestionsService = require('./ml/bus_suggestions_service');
+
+// Instancia de servicio
+const busSuggestionsService = new BusSuggestionsService(SugerenciaBus, ViajeBus, Bus);
+
+// Endpoints CRUD para Sugerencias
+// Listar sugerencias
+app.get('/sugerencias-buses', async (req, res) => {
+  try {
+    const { bus_id, estado, tipo_sugerencia, prioridad } = req.query;
+    const query = {};
+
+    if (bus_id) query.bus_id = bus_id;
+    if (estado) query.estado = estado;
+    if (tipo_sugerencia) query.tipo_sugerencia = tipo_sugerencia;
+    if (prioridad) query.prioridad = prioridad;
+
+    const sugerencias = await SugerenciaBus.find(query).sort({ fecha_sugerencia: -1 });
+    res.json({
+      success: true,
+      sugerencias,
+      count: sugerencias.length
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al obtener sugerencias', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener sugerencia por ID
+app.get('/sugerencias-buses/:id', async (req, res) => {
+  try {
+    const sugerencia = await SugerenciaBus.findById(req.params.id);
+    if (!sugerencia) {
+      return res.status(404).json({ error: 'Sugerencia no encontrada' });
+    }
+    res.json({
+      success: true,
+      sugerencia
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al obtener sugerencia', 
+      details: err.message 
+    });
+  }
+});
+
+// Crear nueva sugerencia
+app.post('/sugerencias-buses', async (req, res) => {
+  try {
+    const sugerencia = await busSuggestionsService.createSuggestion(req.body);
+    res.status(201).json({
+      success: true,
+      sugerencia
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al crear sugerencia', 
+      details: err.message 
+    });
+  }
+});
+
+// Actualizar sugerencia
+app.put('/sugerencias-buses/:id', async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+    updateData.fecha_actualizacion = new Date();
+
+    const sugerencia = await SugerenciaBus.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!sugerencia) {
+      return res.status(404).json({ error: 'Sugerencia no encontrada' });
+    }
+    res.json({
+      success: true,
+      sugerencia
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al actualizar sugerencia', 
+      details: err.message 
+    });
+  }
+});
+
+// Aprobar sugerencia
+app.post('/sugerencias-buses/:id/aprobar', async (req, res) => {
+  try {
+    const { aprobado_por } = req.body;
+    
+    if (!aprobado_por) {
+      return res.status(400).json({ 
+        error: 'aprobado_por es requerido' 
+      });
+    }
+
+    const sugerencia = await busSuggestionsService.approveSuggestion(req.params.id, aprobado_por);
+    res.json({
+      success: true,
+      sugerencia
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al aprobar sugerencia', 
+      details: err.message 
+    });
+  }
+});
+
+// Implementar sugerencia
+app.post('/sugerencias-buses/:id/implementar', async (req, res) => {
+  try {
+    const { implementado_por, fecha_inicio_seguimiento } = req.body;
+    
+    if (!implementado_por) {
+      return res.status(400).json({ 
+        error: 'implementado_por es requerido' 
+      });
+    }
+
+    const fechaInicio = fecha_inicio_seguimiento ? new Date(fecha_inicio_seguimiento) : null;
+    const sugerencia = await busSuggestionsService.implementSuggestion(
+      req.params.id, 
+      implementado_por,
+      fechaInicio
+    );
+    res.json({
+      success: true,
+      sugerencia
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al implementar sugerencia', 
+      details: err.message 
+    });
+  }
+});
+
+// Rechazar sugerencia
+app.post('/sugerencias-buses/:id/rechazar', async (req, res) => {
+  try {
+    const sugerencia = await SugerenciaBus.findById(req.params.id);
+    if (!sugerencia) {
+      return res.status(404).json({ error: 'Sugerencia no encontrada' });
+    }
+
+    sugerencia.estado = 'rechazada';
+    sugerencia.fecha_rechazo = new Date();
+    sugerencia.fecha_actualizacion = new Date();
+    await sugerencia.save();
+
+    res.json({
+      success: true,
+      sugerencia
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al rechazar sugerencia', 
+      details: err.message 
+    });
+  }
+});
+
+// Actualizar tracking de sugerencia
+app.post('/sugerencias-buses/:id/tracking', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+    const dateRange = (startDate && endDate) ? {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    } : null;
+
+    const sugerencia = await busSuggestionsService.updateTracking(req.params.id, dateRange);
+    res.json({
+      success: true,
+      sugerencia
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al actualizar tracking', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints de Reportes
+// Comparativo sugerido vs real
+app.get('/api/buses/suggestions/comparison/:id', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const dateRange = (startDate && endDate) ? {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    } : null;
+
+    const comparison = await busSuggestionsService.generateSuggestedVsRealComparison(
+      req.params.id,
+      dateRange
+    );
+
+    res.json({
+      success: true,
+      ...comparison
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando comparativo', 
+      details: err.message 
+    });
+  }
+});
+
+// Dashboard de adopción de sugerencias
+app.get('/api/buses/suggestions/dashboard', async (req, res) => {
+  try {
+    const { startDate, endDate, busId, tipoSugerencia, estado } = req.query;
+    
+    const dateRange = (startDate && endDate) ? {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    } : null;
+
+    const filters = {};
+    if (busId) filters.busId = busId;
+    if (tipoSugerencia) filters.tipoSugerencia = tipoSugerencia;
+    if (estado) filters.estado = estado;
+
+    const dashboard = await busSuggestionsService.generateAdoptionDashboard(dateRange, filters);
+
+    res.json({
+      success: true,
+      ...dashboard
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando dashboard', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener métricas de impacto de adopción
+app.get('/api/buses/suggestions/impact', async (req, res) => {
+  try {
+    const { startDate, endDate, busId } = req.query;
+    
+    const dateRange = (startDate && endDate) ? {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    } : null;
+
+    const filters = {};
+    if (busId) filters.busId = busId;
+    filters.estado = 'implementada';
+
+    const dashboard = await busSuggestionsService.generateAdoptionDashboard(dateRange, filters);
+
+    res.json({
+      success: true,
+      metricas: dashboard.metricasAdopcion,
+      comparativos: dashboard.comparativos,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas de impacto', 
       details: err.message 
     });
   }
