@@ -6,6 +6,7 @@ const { Bus, ViajeBus } = require('./models/Bus');
 const SugerenciaBus = require('./models/SugerenciaBus');
 const { BaselineData, ProjectCost } = require('./models/BaselineData');
 const { DataVersion, DeviceSync, PendingChange } = require('./models/DataVersion');
+const Evento = require('./models/Evento');
 // ==================== ENDPOINTS PUNTOS DE CONTROL ====================
 
 // Listar todos los puntos de control
@@ -5125,6 +5126,315 @@ app.get('/api/buses/optimization/transport-efficiency', async (req, res) => {
   } catch (err) {
     res.status(500).json({ 
       error: 'Error calculando métricas de eficiencia del transporte', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE EVENTOS Y AUDITORÍA ====================
+
+// Importar servicios de eventos, auditoría, backup y validación
+const AuditService = require('./services/audit_service');
+const BackupService = require('./services/backup_service');
+const DataValidationService = require('./services/data_validation_service');
+
+// Instancias de servicios
+const auditService = new AuditService(Evento);
+const backupService = new BackupService(Evento, Asistencia, Presencia, DecisionManual);
+
+// Obtener modelo de Alumno para validación
+let AlumnoModel = null;
+try {
+  AlumnoModel = mongoose.model('alumnos');
+} catch {
+  // Modelo no existe, se manejará en el servicio
+}
+
+const dataValidationService = new DataValidationService(
+  Evento,
+  Asistencia,
+  Presencia,
+  DecisionManual,
+  User,
+  AlumnoModel
+);
+
+// Inicializar servicios
+backupService.initialize().then(() => {
+  console.log('Servicio de backup inicializado');
+  // Programar backup automático cada 24 horas
+  backupService.scheduleAutomaticBackup(24);
+}).catch(err => {
+  console.error('Error inicializando servicio de backup:', err);
+});
+
+// Configurar triggers de auditoría
+auditService.setupAuditTriggers(Asistencia, 'asistencias');
+auditService.setupAuditTriggers(DecisionManual, 'decisiones_manuales');
+auditService.setupAuditTriggers(Presencia, 'presencia');
+
+// Endpoints de Eventos
+// Crear evento
+app.post('/eventos', async (req, res) => {
+  try {
+    const eventoData = req.body;
+    
+    if (!eventoData.estudiante_id || !eventoData.guardia_id || !eventoData.decision) {
+      return res.status(400).json({ 
+        error: 'estudiante_id, guardia_id y decision son requeridos' 
+      });
+    }
+
+    const evento = new Evento({
+      _id: uuidv4(),
+      ...eventoData,
+      fecha: eventoData.fecha ? new Date(eventoData.fecha) : new Date(),
+      hora: eventoData.hora || new Date().toTimeString().split(' ')[0],
+      timestamp: eventoData.timestamp ? new Date(eventoData.timestamp) : new Date(),
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+
+    await evento.save();
+    res.status(201).json({
+      success: true,
+      evento
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error creando evento', 
+      details: err.message 
+    });
+  }
+});
+
+// Listar eventos
+app.get('/eventos', async (req, res) => {
+  try {
+    const {
+      estudiante_id,
+      guardia_id,
+      decision,
+      tipo_evento,
+      start_date,
+      end_date,
+      limit = 100,
+      skip = 0
+    } = req.query;
+
+    const query = {};
+    if (estudiante_id) query.estudiante_id = estudiante_id;
+    if (guardia_id) query.guardia_id = guardia_id;
+    if (decision) query.decision = decision;
+    if (tipo_evento) query.tipo_evento = tipo_evento;
+    if (start_date || end_date) {
+      query.timestamp = {};
+      if (start_date) query.timestamp.$gte = new Date(start_date);
+      if (end_date) query.timestamp.$lte = new Date(end_date);
+    }
+
+    const eventos = await Evento.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .lean();
+
+    const total = await Evento.countDocuments(query);
+
+    res.json({
+      success: true,
+      eventos,
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip)
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo eventos', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener evento por ID
+app.get('/eventos/:id', async (req, res) => {
+  try {
+    const evento = await Evento.findById(req.params.id);
+    if (!evento) {
+      return res.status(404).json({ error: 'Evento no encontrado' });
+    }
+    res.json({
+      success: true,
+      evento
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo evento', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints de Auditoría
+// Obtener eventos de auditoría
+app.get('/api/audit/events', async (req, res) => {
+  try {
+    const result = await auditService.getAuditEvents(req.query);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo eventos de auditoría', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener estadísticas de auditoría
+app.get('/api/audit/statistics', async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+    const stats = await auditService.getAuditStatistics(start_date, end_date);
+    res.json({
+      success: true,
+      ...stats
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error obteniendo estadísticas de auditoría', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar integridad de evento
+app.get('/api/audit/validate/:id', async (req, res) => {
+  try {
+    const result = await auditService.validateEventIntegrity(req.params.id);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando integridad', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints de Backup
+// Realizar backup de eventos
+app.post('/api/backup/events', async (req, res) => {
+  try {
+    const result = await backupService.backupEvents(req.body);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error realizando backup', 
+      details: err.message 
+    });
+  }
+});
+
+// Realizar backup completo
+app.post('/api/backup/full', async (req, res) => {
+  try {
+    const result = await backupService.backupAll(req.body);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error realizando backup completo', 
+      details: err.message 
+    });
+  }
+});
+
+// Listar backups
+app.get('/api/backup/list', async (req, res) => {
+  try {
+    const backups = await backupService.listBackups();
+    res.json({
+      success: true,
+      backups
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error listando backups', 
+      details: err.message 
+    });
+  }
+});
+
+// Restaurar backup
+app.post('/api/backup/restore/:filename', async (req, res) => {
+  try {
+    const result = await backupService.restoreBackup(req.params.filename, req.body);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error restaurando backup', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints de Validación
+// Validar integridad referencial
+app.get('/api/validation/referential-integrity', async (req, res) => {
+  try {
+    const { event_id } = req.query;
+    const result = await dataValidationService.validateEventReferentialIntegrity(event_id);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando integridad referencial', 
+      details: err.message 
+    });
+  }
+});
+
+// Validar consistencia de datos
+app.get('/api/validation/consistency', async (req, res) => {
+  try {
+    const result = await dataValidationService.validateDataConsistency();
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error validando consistencia', 
+      details: err.message 
+    });
+  }
+});
+
+// Reparar inconsistencias
+app.post('/api/validation/repair', async (req, res) => {
+  try {
+    const result = await dataValidationService.repairInconsistencies(req.body);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error reparando inconsistencias', 
       details: err.message 
     });
   }

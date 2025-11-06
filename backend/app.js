@@ -37,6 +37,7 @@ require('./models/Bus');
 require('./models/SugerenciaBus');
 require('./models/BaselineData');
 require('./models/DataVersion');
+require('./models/Evento');
 
 // Importar todas las rutas desde index.js
 // Nota: En producción, las rutas están en index.js
