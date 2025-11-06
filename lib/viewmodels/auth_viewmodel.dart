@@ -1,0 +1,177 @@
+import 'package:flutter/foundation.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+import '../models/usuario_model.dart';
+import '../services/api_service.dart';
+import '../services/session_service.dart';
+import '../services/logging_service.dart';
+import '../services/monitoring_service.dart';
+
+class AuthViewModel extends ChangeNotifier {
+  final ApiService _apiService = ApiService();
+  final SessionService _sessionService = SessionService();
+  final LoggingService _logging = LoggingService();
+
+  UsuarioModel? _currentUser;
+  bool _isLoading = false;
+  String? _errorMessage;
+  bool _sessionWarningShown = false;
+
+  // Getters
+  UsuarioModel? get currentUser => _currentUser;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
+  bool get isLoggedIn => _currentUser != null;
+  bool get isAdmin => _currentUser?.isAdmin ?? false;
+  SessionService get sessionService => _sessionService;
+
+  // Login
+  Future<bool> login(String email, String password) async {
+    _setLoading(true);
+    _clearError();
+
+    _logging.info('Intento de login', metadata: {'email': email});
+
+    try {
+      _currentUser = await _apiService.login(email, password);
+
+      // Establecer userId en logging para correlación
+      _logging.setUserId(_currentUser?.id);
+
+      // Inicializar sesión después del login exitoso
+      await _sessionService.initializeSession();
+      _startUserSession();
+
+      _logging.info('Login exitoso', metadata: {
+        'userId': _currentUser?.id,
+        'email': email,
+        'rango': _currentUser?.rango
+      });
+
+      // Configurar usuario en monitoreo
+      MonitoringService().setUser(
+        _currentUser?.id,
+        email: email,
+        username: _currentUser?.nombre,
+      );
+
+      _setLoading(false);
+      notifyListeners();
+      return true;
+    } catch (e, stackTrace) {
+      _logging.error('Error en login', error: e, stackTrace: stackTrace, metadata: {'email': email});
+      
+      // Capturar error en monitoreo
+      await MonitoringService().captureException(
+        e,
+        stackTrace: stackTrace,
+        extra: {'email': email, 'operation': 'login'},
+        level: SentryLevel.error,
+      );
+      
+      _setError(e.toString());
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  // Logout
+  void logout() {
+    final userId = _currentUser?.id;
+    _logging.info('Logout', metadata: {'userId': userId});
+    
+    // Limpiar contexto de monitoreo
+    MonitoringService().clearContext();
+    
+    _sessionService.endSession();
+    _currentUser = null;
+    _logging.setUserId(null);
+    _clearError();
+    notifyListeners();
+  }
+
+  // Cambiar contraseña
+  Future<bool> changePassword(String newPassword) async {
+    if (_currentUser == null) return false;
+
+    _setLoading(true);
+    _clearError();
+
+    try {
+      await _apiService.changePassword(_currentUser!.id, newPassword);
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      _setError(e.toString());
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  // Extender sesión (llamar en actividades del usuario)
+  void extendSession() {
+    if (isLoggedIn) {
+      _sessionService.extendSession();
+    }
+  }
+
+  // Configurar tiempo de sesión (solo admin)
+  Future<bool> configureSessionTimeout(
+    int timeoutMinutes,
+    int warningMinutes,
+  ) async {
+    if (!isAdmin) return false;
+
+    try {
+      await _sessionService.configureSessionTimeout(
+        timeoutMinutes,
+        warningMinutes,
+      );
+      return true;
+    } catch (e) {
+      _setError('Error al configurar sesión: $e');
+      return false;
+    }
+  }
+
+  // Iniciar sesión del usuario con callbacks
+  void _startUserSession() {
+    _sessionService.startSession(
+      onSessionExpired: () {
+        // Logout automático cuando expire la sesión
+        logout();
+      },
+      onSessionWarning: () {
+        // Marcar que se mostró la advertencia
+        _sessionWarningShown = true;
+        notifyListeners();
+      },
+    );
+  }
+
+  // Verificar si hay advertencia de sesión
+  bool hasSessionWarning() {
+    return _sessionWarningShown;
+  }
+
+  // Limpiar advertencia de sesión
+  void clearSessionWarning() {
+    _sessionWarningShown = false;
+    notifyListeners();
+  }
+
+  // Métodos privados
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
+
+  void _setError(String error) {
+    _errorMessage = error;
+    notifyListeners();
+  }
+
+  void _clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+}

@@ -1,0 +1,78 @@
+# Archivos y directorios ignorados por Git
+
+# Dependencias
+node_modules/
+.packages
+.pub-cache/
+pubspec.lock
+
+# Build outputs
+build/
+dist/
+*.js.map
+*.dart.js
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-plugins-dependencies-lock
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.backup
+*_backup.dart
+* copy.dart
+
+# Data directories (si contienen datos sensibles)
+backend/data/
+backend/public/dashboard/data/
+
+# Coverage
+coverage/
+*.lcov
+
+# Testing
+test/.test_coverage.dart
+
+# Firebase
+.firebase/
+firebase_options.dart
+
+# Certificados y claves
+*.pem
+*.key
+*.cert
+

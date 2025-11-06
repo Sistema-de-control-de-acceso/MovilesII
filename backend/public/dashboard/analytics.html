@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Analítico - Patrones de Flujo</title>
+    <link rel="stylesheet" href="/dashboard/styles.css">
+    <link rel="stylesheet" href="/dashboard/analytics.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-wrapper">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Control Acceso</span>
+                </div>
+                <button class="sidebar-toggle" id="sidebarToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/dashboard/index.html" class="nav-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/dashboard/analytics.html" class="nav-item active">
+                    <i class="fas fa-chart-area"></i>
+                    <span>Análisis Analítico</span>
+                </a>
+                <a href="#" class="nav-item" data-section="patterns">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Patrones</span>
+                </a>
+                <a href="#" class="nav-item" data-section="trends">
+                    <i class="fas fa-trending-up"></i>
+                    <span>Tendencias</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Header -->
+            <header class="top-header">
+                <div class="header-left">
+                    <h1><i class="fas fa-chart-area"></i> Dashboard Analítico - Patrones de Flujo</h1>
+                </div>
+                <div class="header-right">
+                    <div class="controls">
+                        <select id="granularitySelect" class="control-select">
+                            <option value="hour">Por Hora</option>
+                            <option value="day">Por Día</option>
+                            <option value="week">Por Semana</option>
+                        </select>
+                        <select id="monthsSelect" class="control-select">
+                            <option value="1">1 Mes</option>
+                            <option value="3" selected>3 Meses</option>
+                            <option value="6">6 Meses</option>
+                            <option value="12">12 Meses</option>
+                        </select>
+                        <button id="refreshBtn" class="btn btn-primary">
+                            <i class="fas fa-sync-alt"></i> Actualizar
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Loading Indicator -->
+            <div id="loadingIndicator" class="loading-indicator">
+                <div class="spinner"></div>
+                <p>Cargando datos analíticos...</p>
+            </div>
+
+            <!-- Summary Cards -->
+            <section class="summary-cards" id="summaryCards">
+                <div class="card">
+                    <div class="card-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3>Flujo Total</h3>
+                        <p class="card-value" id="totalFlow">-</p>
+                        <p class="card-label">Estudiantes</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">
+                        <i class="fas fa-trending-up"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3>Tendencia</h3>
+                        <p class="card-value" id="trendDirection">-</p>
+                        <p class="card-label" id="trendStrength">-</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3>Promedio</h3>
+                        <p class="card-value" id="averageFlow">-</p>
+                        <p class="card-label">Por período</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3>Anomalías</h3>
+                        <p class="card-value" id="anomaliesCount">-</p>
+                        <p class="card-label">Detectadas</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Section -->
+            <section class="charts-section">
+                <!-- Time Series Line Chart -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h2><i class="fas fa-chart-line"></i> Evolución Temporal del Flujo</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="timeSeriesChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Hourly Distribution -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h2><i class="fas fa-clock"></i> Distribución por Hora del Día</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="hourlyChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Daily Distribution -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h2><i class="fas fa-calendar-week"></i> Distribución por Día de la Semana</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="dailyChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Flow Distribution Pie -->
+                <div class="chart-container half-width">
+                    <div class="chart-header">
+                        <h2><i class="fas fa-chart-pie"></i> Entradas vs Salidas</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="flowDistributionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Heatmap -->
+                <div class="chart-container half-width">
+                    <div class="chart-header">
+                        <h2><i class="fas fa-th"></i> Heatmap: Día x Hora</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="heatmapChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Anomalies Chart -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h2><i class="fas fa-exclamation-circle"></i> Anomalías Detectadas</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="anomaliesChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Patterns and Insights Section -->
+            <section class="insights-section">
+                <div class="insights-container">
+                    <h2><i class="fas fa-lightbulb"></i> Insights y Recomendaciones</h2>
+                    <div id="recommendationsList" class="recommendations-list">
+                        <!-- Recommendations will be populated here -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/dashboard/analytics.js"></script>
+</body>
+</html>
