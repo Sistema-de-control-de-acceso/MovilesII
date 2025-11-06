@@ -4,6 +4,7 @@ const PuntoControl = require('./models/PuntoControl');
 const Asignacion = require('./models/Asignacion');
 const { Bus, ViajeBus } = require('./models/Bus');
 const SugerenciaBus = require('./models/SugerenciaBus');
+const { BaselineData, ProjectCost } = require('./models/BaselineData');
 // ==================== ENDPOINTS PUNTOS DE CONTROL ====================
 
 // Listar todos los puntos de control
@@ -4643,6 +4644,362 @@ app.get('/api/buses/suggestions/impact', async (req, res) => {
   } catch (err) {
     res.status(500).json({ 
       error: 'Error obteniendo métricas de impacto', 
+      details: err.message 
+    });
+  }
+});
+
+// ==================== ENDPOINTS DE ROI DEL PROYECTO ====================
+
+// Importar servicio de ROI del proyecto
+const ProjectROIService = require('./ml/project_roi_service');
+
+// Instancia de servicio
+const projectROIService = new ProjectROIService(
+  BaselineData,
+  ProjectCost,
+  Asistencia,
+  Presencia,
+  ViajeBus
+);
+
+// Endpoints CRUD para Baseline Data
+// Listar baselines
+app.get('/baseline-data', async (req, res) => {
+  try {
+    const baselines = await BaselineData.find().sort({ 'periodo.fecha_inicio': -1 });
+    res.json({
+      success: true,
+      baselines,
+      count: baselines.length
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al obtener baselines', 
+      details: err.message 
+    });
+  }
+});
+
+// Obtener baseline por ID
+app.get('/baseline-data/:id', async (req, res) => {
+  try {
+    const baseline = await BaselineData.findById(req.params.id);
+    if (!baseline) {
+      return res.status(404).json({ error: 'Baseline no encontrado' });
+    }
+    res.json({
+      success: true,
+      baseline
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al obtener baseline', 
+      details: err.message 
+    });
+  }
+});
+
+// Crear o actualizar baseline
+app.post('/baseline-data', async (req, res) => {
+  try {
+    const baseline = await projectROIService.createOrUpdateBaseline(req.body);
+    res.status(201).json({
+      success: true,
+      baseline
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al crear/actualizar baseline', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints CRUD para Project Costs
+// Listar costos del proyecto
+app.get('/project-costs', async (req, res) => {
+  try {
+    const { tipo_costo, categoria, startDate, endDate } = req.query;
+    const query = {};
+
+    if (tipo_costo) query.tipo_costo = tipo_costo;
+    if (categoria) query.categoria = categoria;
+    if (startDate || endDate) {
+      query.fecha = {};
+      if (startDate) query.fecha.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.fecha.$lte = end;
+      }
+    }
+
+    const costos = await ProjectCost.find(query).sort({ fecha: -1 });
+    res.json({
+      success: true,
+      costos,
+      count: costos.length
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al obtener costos', 
+      details: err.message 
+    });
+  }
+});
+
+// Crear costo del proyecto
+app.post('/project-costs', async (req, res) => {
+  try {
+    const { tipo_costo, descripcion, monto, fecha, periodo, categoria } = req.body;
+    
+    if (!tipo_costo || !monto || !fecha) {
+      return res.status(400).json({ 
+        error: 'tipo_costo, monto y fecha son requeridos' 
+      });
+    }
+
+    const costo = new ProjectCost({
+      _id: uuidv4(),
+      tipo_costo,
+      descripcion,
+      monto: parseFloat(monto),
+      fecha: new Date(fecha),
+      periodo: periodo || { tipo: 'unico' },
+      categoria: categoria || 'operacion_recurrente',
+      fecha_creacion: new Date(),
+      fecha_actualizacion: new Date()
+    });
+
+    await costo.save();
+    res.status(201).json({
+      success: true,
+      costo
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al crear costo', 
+      details: err.message 
+    });
+  }
+});
+
+// Actualizar costo
+app.put('/project-costs/:id', async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+    updateData.fecha_actualizacion = new Date();
+
+    const costo = await ProjectCost.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!costo) {
+      return res.status(404).json({ error: 'Costo no encontrado' });
+    }
+    res.json({
+      success: true,
+      costo
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error al actualizar costo', 
+      details: err.message 
+    });
+  }
+});
+
+// Endpoints de Reportes
+// Calcular métricas actuales (post-implementación)
+app.get('/api/project/current-metrics', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'startDate y endDate son requeridos' 
+      });
+    }
+
+    const dateRange = {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    };
+
+    const metrics = await projectROIService.calculateCurrentMetrics(dateRange);
+
+    res.json({
+      success: true,
+      ...metrics
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error calculando métricas actuales', 
+      details: err.message 
+    });
+  }
+});
+
+// Comparativo pre/post implementación
+app.get('/api/project/pre-post-comparison', async (req, res) => {
+  try {
+    const { baselineId, startDate, endDate } = req.query;
+
+    if (!baselineId || !startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'baselineId, startDate y endDate son requeridos' 
+      });
+    }
+
+    const dateRange = {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    };
+
+    const comparison = await projectROIService.generatePrePostComparison(baselineId, dateRange);
+
+    res.json({
+      success: true,
+      ...comparison
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando comparativo pre/post', 
+      details: err.message 
+    });
+  }
+});
+
+// Calcular KPIs de impacto
+app.get('/api/project/impact-kpis', async (req, res) => {
+  try {
+    const { baselineId, startDate, endDate } = req.query;
+
+    if (!baselineId || !startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'baselineId, startDate y endDate son requeridos' 
+      });
+    }
+
+    const dateRange = {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    };
+
+    const kpis = await projectROIService.calculateImpactKPIs(baselineId, dateRange);
+
+    res.json({
+      success: true,
+      ...kpis
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error calculando KPIs de impacto', 
+      details: err.message 
+    });
+  }
+});
+
+// Calcular costos del proyecto
+app.get('/api/project/costs', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    const dateRange = (startDate && endDate) ? {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    } : null;
+
+    const costs = await projectROIService.calculateProjectCosts(dateRange);
+
+    res.json({
+      success: true,
+      ...costs
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error calculando costos', 
+      details: err.message 
+    });
+  }
+});
+
+// Análisis costo-beneficio y ROI
+app.get('/api/project/cost-benefit-analysis', async (req, res) => {
+  try {
+    const { baselineId, startDate, endDate, projectionMonths } = req.query;
+
+    if (!baselineId || !startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'baselineId, startDate y endDate son requeridos' 
+      });
+    }
+
+    const dateRange = {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    };
+
+    const months = projectionMonths ? parseInt(projectionMonths) : 12;
+
+    const analysis = await projectROIService.calculateCostBenefitAnalysis(
+      baselineId,
+      dateRange,
+      months
+    );
+
+    res.json({
+      success: true,
+      ...analysis
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error calculando análisis costo-beneficio', 
+      details: err.message 
+    });
+  }
+});
+
+// Reporte completo de ROI del proyecto
+app.get('/api/project/roi-report', async (req, res) => {
+  try {
+    const { 
+      baselineId, 
+      startDate, 
+      endDate, 
+      includeKPIs, 
+      includeCostBenefit, 
+      projectionMonths 
+    } = req.query;
+
+    if (!baselineId || !startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'baselineId, startDate y endDate son requeridos' 
+      });
+    }
+
+    const dateRange = {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    };
+
+    const options = {
+      includeKPIs: includeKPIs !== 'false',
+      includeCostBenefit: includeCostBenefit !== 'false',
+      projectionMonths: projectionMonths ? parseInt(projectionMonths) : 12
+    };
+
+    const report = await projectROIService.generateProjectROIReport(
+      baselineId,
+      dateRange,
+      options
+    );
+
+    res.json({
+      success: true,
+      ...report
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Error generando reporte de ROI', 
       details: err.message 
     });
   }
