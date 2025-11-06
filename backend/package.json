@@ -11,7 +11,8 @@
     "simple-statistics": "^7.8.2",
     "ml-matrix": "^6.10.4",
     "winston": "^3.11.0",
-    "winston-transport": "^4.7.0"
+    "winston-transport": "^4.7.0",
+    "express-rate-limit": "^7.1.5"
   },
   "devDependencies": {
     "jest": "^29.7.0",
