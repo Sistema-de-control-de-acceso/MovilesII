@@ -1,7 +1,7 @@
 name: moviles2
-description: "A new Flutter project."
+description: "Sistema de Control de Acceso NFC con Detección Automática"
 publish_to: 'none'
-version: 0.1.0
+version: 1.0.0+1
 
 environment:
   sdk: ^3.7.2
@@ -9,6 +9,25 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # NFC
+  flutter_nfc_kit: ^3.6.0
+  nfc_manager: ^3.3.0
+  # UI
+  provider: ^6.1.1
+  fluttertoast: ^8.2.2
+  # Audio
+  audioplayers: ^5.2.1
+  # Vibración
+  vibration: ^1.8.4
+  # Logging
+  logger: ^2.0.2+1
+  # HTTP
+  http: ^1.2.0
+  # Storage
+  shared_preferences: ^2.2.2
+  # Device info
+  device_info_plus: ^9.1.1
+  package_info_plus: ^5.0.1
   provider: ^6.1.1
   fluttertoast: ^8.2.2
   intl: ^0.18.1   
@@ -48,6 +67,13 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/sounds/
+
   mockito: ^5.4.4
   build_runner: ^2.4.7
   test_coverage: ^0.4.5

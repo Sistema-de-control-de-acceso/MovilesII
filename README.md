@@ -1,162 +1,115 @@
-# Sistema de Control de Acceso Universitario
+# Sistema de Control de Acceso NFC
 
-Sistema completo de control de acceso a instalaciones universitarias con aplicación móvil Flutter y backend Node.js/Express, integrando tecnologías NFC, funcionalidad offline y dashboard web en tiempo real.
+Sistema completo de detección automática de pulseras NFC para identificar estudiantes en proximidad (10cm).
 
-## 📋 Descripción del Proyecto
+## 🚀 Características Principales
 
-Sistema integral para gestionar el acceso de estudiantes, personal y visitantes a las instalaciones universitarias mediante tecnología NFC, con capacidades offline, sincronización automática y dashboard administrativo.
+- ✅ **Detección Automática**: Detecta pulseras NFC automáticamente a 10cm
+- ✅ **Lectura Sin Contacto**: No requiere tocar el dispositivo
+- ✅ **Feedback Multimodal**: Visual, sonoro y háptico
+- ✅ **Calibración Precisa**: Sistema de calibración para mejorar precisión
+- ✅ **Algoritmo Avanzado**: Múltiples métodos de cálculo de distancia
+
+## 📋 Requisitos
+
+- Flutter SDK 3.7.2+
+- Dispositivo con NFC habilitado
+- Android 6.0+ o iOS 11.0+
+
+## 🔧 Instalación
+
+1. Clonar repositorio:
+```bash
+git clone <repository-url>
+cd MovilesII
+```
+
+2. Instalar dependencias:
+```bash
+flutter pub get
+```
+
+3. Configurar permisos (ver `docs/NFC_AUTO_DETECTION.md`)
+
+4. Ejecutar aplicación:
+```bash
+flutter run
+```
+
+## 📱 Uso
+
+### Pantalla Principal
+
+La aplicación incluye una pantalla de detección automática (`NFCAutoDetectionScreen`) que permite:
+
+1. **Iniciar Detección**: Presionar botón "Iniciar" para comenzar a escanear
+2. **Ver Estado**: El indicador visual muestra el estado de detección
+3. **Calibrar**: Usar el botón de configuración para calibrar distancia
+
+### Integración en tu App
+
+```dart
+import 'package:moviles2/screens/nfc_auto_detection_screen.dart';
+
+// Navegar a la pantalla
+Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (context) => NFCAutoDetectionScreen(),
+  ),
+);
+```
+
+## 🧪 Pruebas
+
+### Tests Unitarios
+
+```bash
+flutter test test/nfc_auto_detection_test.dart
+```
+
+### Pruebas de Hardware
+
+Ver `docs/NFC_AUTO_DETECTION.md` para instrucciones detalladas de pruebas de hardware.
+
+## 📚 Documentación
+
+- **Detección Automática NFC**: `docs/NFC_AUTO_DETECTION.md`
+  - Arquitectura del sistema
+  - Algoritmo de detección de proximidad
+  - Guía de calibración
+  - Troubleshooting
 
 ## 🏗️ Estructura del Proyecto
 
 ```
-MovilesII/
-├── mobile/                      # Aplicación Flutter
-│   ├── lib/
-│   │   ├── main.dart           # Punto de entrada
-│   │   ├── config/             # Configuraciones
-│   │   ├── models/             # Modelos de datos
-│   │   ├── services/           # Servicios (API, NFC, Offline)
-│   │   ├── viewmodels/         # ViewModels (MVVM)
-│   │   ├── views/              # Vistas/Pantallas
-│   │   │   ├── admin/          # Vistas de administrador
-│   │   │   ├── user/           # Vistas de usuario
-│   │   │   └── ...
-│   │   └── widgets/            # Widgets reutilizables
-│   ├── pubspec.yaml            # Dependencias Flutter
-│   └── README.md               # Documentación móvil
-│
-├── backend/                     # Backend Node.js/Express
-│   ├── index.js                # Servidor principal
-│   ├── models/                 # Modelos Mongoose
-│   ├── routes/                 # Rutas API (si se expande)
-│   ├── public/                 # Archivos estáticos
-│   │   └── dashboard/          # Dashboard web
-│   ├── package.json            # Dependencias Node.js
-│   └── README.md               # Documentación backend
-│
-├── docs/                        # Documentación del proyecto
-│   ├── ARCHITECTURE.md         # Arquitectura del sistema
-│   ├── API.md                  # Documentación API
-│   └── DEPLOYMENT.md           # Guía de despliegue
-│
-├── .gitignore                   # Archivos ignorados por Git
-├── LICENSE                      # Licencia del proyecto
-└── README.md                    # Este archivo
+lib/
+├── services/
+│   ├── nfc_auto_detection_service.dart    # Servicio principal
+│   ├── nfc_proximity_algorithm.dart      # Algoritmo de distancia
+│   └── nfc_calibration_service.dart      # Calibración
+├── widgets/
+│   └── nfc_detection_widget.dart         # Widget de UI
+└── screens/
+    └── nfc_auto_detection_screen.dart    # Pantalla principal
 ```
 
-## 🚀 Características Principales
+## 🔍 Troubleshooting
 
-### Aplicación Móvil (Flutter)
-- ✅ Autenticación de usuarios (Admin y Guardias)
-- ✅ Lectura y escritura NFC
-- ✅ Funcionalidad offline completa
-- ✅ Sincronización automática de datos
-- ✅ Gestión de estudiantes y visitantes
-- ✅ Reportes y estadísticas
-- ✅ Control de presencia
+### NFC no disponible
+- Verificar que el dispositivo tiene NFC
+- Verificar permisos en AndroidManifest.xml / Info.plist
+- Reiniciar dispositivo
 
-### Backend (Node.js/Express)
-- ✅ API REST completa
-- ✅ Base de datos MongoDB Atlas
-- ✅ Autenticación segura con bcrypt
-- ✅ Dashboard web en tiempo real
-- ✅ WebSockets para actualizaciones en vivo
-- ✅ Endpoints de reportes y métricas
-
-### Dashboard Web
-- ✅ Métricas en tiempo real
-- ✅ Gráficos interactivos
-- ✅ Diseño responsive
-- ✅ Actualizaciones automáticas
-
-## 🛠️ Tecnologías Utilizadas
-
-### Frontend Móvil
-- **Flutter** - Framework multiplataforma
-- **Provider** - Gestión de estado
-- **Hive** - Base de datos local
-- **flutter_nfc_kit** - Integración NFC
-- **sqflite** - Base de datos SQLite offline
-
-### Backend
-- **Node.js** - Runtime JavaScript
-- **Express.js** - Framework web
-- **MongoDB/Mongoose** - Base de datos
-- **Socket.IO** - WebSockets
-- **bcrypt** - Hash de contraseñas
-
-### Dashboard Web
-- **HTML5/CSS3** - Frontend
-- **Chart.js** - Gráficos interactivos
-- **Socket.IO Client** - Tiempo real
-
-## 📦 Instalación
-
-### Requisitos Previos
-- Flutter SDK (>=3.7.2)
-- Node.js (>=12.0.0)
-- MongoDB Atlas (o MongoDB local)
-- Git
-
-### Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env  # Configurar variables de entorno
-npm start
-```
-
-### Aplicación Móvil
-
-```bash
-flutter pub get
-flutter run
-```
-
-## 🔧 Configuración
-
-### Variables de Entorno (Backend)
-
-Crear archivo `.env` en `backend/`:
-
-```env
-MONGODB_URI=mongodb+srv://usuario:password@cluster.mongodb.net/ASISTENCIA
-PORT=3000
-```
-
-### Configuración API (Móvil)
-
-Editar `lib/config/api_config.dart` con la URL del backend.
-
-## 📱 Uso
-
-1. **Backend**: Iniciar servidor en `http://localhost:3000`
-2. **Dashboard**: Acceder a `http://localhost:3000/dashboard`
-3. **Móvil**: Ejecutar aplicación Flutter y autenticarse
-
-## 🧪 Testing
-
-```bash
-# Backend
-cd backend
-npm test
-
-# Móvil
-flutter test
-```
+### Detección imprecisa
+- Ejecutar calibración (mínimo 3 puntos)
+- Asegurar que puntos están en diferentes distancias
+- Verificar que tag es compatible
 
 ## 📄 Licencia
 
-Este proyecto es propiedad de la Universidad.
+[Especificar licencia]
 
 ## 👥 Contribuidores
 
-- @Zod0808
-- @Angelhc123
-- @KrCrimson
-- @LunaJuarezJuan
-
-## 📞 Contacto
-
-Para más información, contactar al equipo de desarrollo.
+[Especificar contribuidores]
