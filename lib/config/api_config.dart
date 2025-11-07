@@ -1,23 +1,15 @@
+/// Configuración de API
 class ApiConfig {
-  // Para desarrollo local
-  static const String _baseUrlDev = 'http://192.168.1.51:3000';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:3000/api',
+  );
 
-  // Para producción - URL real de Render
-  static const String _baseUrlProd = 'https://movilesii.onrender.com';
-
-  // Cambiar a true cuando compiles la APK para producción
-  static const bool _isProduction = false;
-
-  static String get baseUrl => _isProduction ? _baseUrlProd : _baseUrlDev;
-
-  // URLs de endpoints
-  static String get loginUrl => '$baseUrl/login';
-  static String get usuariosUrl => '$baseUrl/usuarios';
-  static String get asistenciasUrl => '$baseUrl/asistencias';
-  static String get facultadesUrl => '$baseUrl/facultades';
-  static String get escuelasUrl => '$baseUrl/escuelas';
-  static String get externosUrl => '$baseUrl/externos';
-  static String get alumnosUrl => '$baseUrl/alumnos';
-  static String get visitasUrl => '$baseUrl/visitas';
-  static String get puntosControlUrl => '$baseUrl/puntos-control';
+  static const Duration timeout = Duration(seconds: 30);
+  
+  static Map<String, String> get defaultHeaders => {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
 }
+
