@@ -1,0 +1,11 @@
+# Resultados de pruebas
+results/
+*.json
+*.csv
+
+# Logs
+*.log
+
+# Node modules (si se agregan dependencias)
+node_modules/
+

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo de Salud del Sistema</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        .status-healthy {
+            background: #27ae60;
+            color: white;
+        }
+
+        .status-degraded {
+            background: #f39c12;
+            color: white;
+        }
+
+        .status-unhealthy {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 18px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .metric {
+            margin-bottom: 15px;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .metric-unit {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-left: 5px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #ecf0f1;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-low {
+            background: #27ae60;
+        }
+
+        .progress-medium {
+            background: #f39c12;
+        }
+
+        .progress-high {
+            background: #e74c3c;
+        }
+
+        .issues-list {
+            list-style: none;
+        }
+
+        .issue {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid;
+        }
+
+        .issue-warning {
+            background: #fff3cd;
+            border-color: #f39c12;
+        }
+
+        .issue-critical {
+            background: #f8d7da;
+            border-color: #e74c3c;
+        }
+
+        .issue-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .issue-message {
+            font-size: 14px;
+            color: #555;
+        }
+
+        .refresh-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .refresh-btn:hover {
+            background: #2980b9;
+        }
+
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .auto-refresh input {
+            margin-right: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>
+                Monitoreo de Salud del Sistema
+                <span id="statusBadge" class="status-badge status-healthy">Cargando...</span>
+            </h1>
+            <p>Última actualización: <span id="lastUpdate">-</span></p>
+            <div class="auto-refresh">
+                <label>
+                    <input type="checkbox" id="autoRefresh" checked>
+                    Auto-actualizar cada 30 segundos
+                </label>
+                <button class="refresh-btn" onclick="loadHealthData()">Actualizar Ahora</button>
+            </div>
+        </header>
+
+        <div id="errorContainer"></div>
+
+        <div class="grid">
+            <!-- Métricas del Sistema -->
+            <div class="card">
+                <h2>CPU</h2>
+                <div class="metric">
+                    <div class="metric-label">Uso del Proceso</div>
+                    <div class="metric-value">
+                        <span id="cpuProcess">-</span>
+                        <span class="metric-unit">%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="cpuProcessBar" class="progress-fill progress-low" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Carga del Sistema</div>
+                    <div class="metric-value">
+                        <span id="cpuSystem">-</span>
+                        <span class="metric-unit">%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="cpuSystemBar" class="progress-fill progress-low" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Núcleos</div>
+                    <div class="metric-value">
+                        <span id="cpuCores">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memoria -->
+            <div class="card">
+                <h2>Memoria</h2>
+                <div class="metric">
+                    <div class="metric-label">Sistema (Usado/Total)</div>
+                    <div class="metric-value">
+                        <span id="memSystemUsed">-</span> / <span id="memSystemTotal">-</span>
+                        <span class="metric-unit">MB</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="memSystemBar" class="progress-fill progress-low" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Proceso Heap</div>
+                    <div class="metric-value">
+                        <span id="memHeapUsed">-</span> / <span id="memHeapTotal">-</span>
+                        <span class="metric-unit">MB</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="memHeapBar" class="progress-fill progress-low" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Base de Datos -->
+            <div class="card">
+                <h2>Base de Datos</h2>
+                <div class="metric">
+                    <div class="metric-label">Estado</div>
+                    <div class="metric-value" id="dbStatus">-</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Conexiones Activas</div>
+                    <div class="metric-value">
+                        <span id="dbConnections">-</span>
+                    </div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Colecciones</div>
+                    <div class="metric-value">
+                        <span id="dbCollections">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resumen -->
+            <div class="card">
+                <h2>Resumen</h2>
+                <div class="metric">
+                    <div class="metric-label">Estado General</div>
+                    <div class="metric-value" id="overallStatus">-</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Problemas Totales</div>
+                    <div class="metric-value">
+                        <span id="totalIssues">0</span>
+                    </div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Críticos</div>
+                    <div class="metric-value" style="color: #e74c3c;">
+                        <span id="criticalIssues">0</span>
+                    </div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Advertencias</div>
+                    <div class="metric-value" style="color: #f39c12;">
+                        <span id="warningIssues">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Issues -->
+        <div class="card" id="issuesCard" style="display: none;">
+            <h2>Problemas Detectados</h2>
+            <ul class="issues-list" id="issuesList"></ul>
+        </div>
+
+        <!-- Incidentes Recientes -->
+        <div class="card">
+            <h2>Incidentes Recientes</h2>
+            <div id="incidentsContainer" class="loading">Cargando...</div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval = null;
+
+        async function loadHealthData() {
+            try {
+                const response = await fetch('/health/detailed');
+                const data = await response.json();
+
+                updateHealthDisplay(data);
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
+                document.getElementById('errorContainer').innerHTML = '';
+            } catch (error) {
+                document.getElementById('errorContainer').innerHTML = 
+                    `<div class="error">Error cargando datos: ${error.message}</div>`;
+            }
+        }
+
+        function updateHealthDisplay(data) {
+            // Estado general
+            const statusBadge = document.getElementById('statusBadge');
+            statusBadge.textContent = data.status.toUpperCase();
+            statusBadge.className = `status-badge status-${data.status}`;
+            document.getElementById('overallStatus').textContent = data.status.toUpperCase();
+
+            // CPU
+            if (data.system?.metrics?.cpu) {
+                const cpu = data.system.metrics.cpu;
+                document.getElementById('cpuProcess').textContent = cpu.process.usage.toFixed(2);
+                document.getElementById('cpuSystem').textContent = cpu.system.loadPercent.toFixed(2);
+                document.getElementById('cpuCores').textContent = cpu.system.cores;
+
+                updateProgressBar('cpuProcessBar', cpu.process.usage);
+                updateProgressBar('cpuSystemBar', cpu.system.loadPercent);
+            }
+
+            // Memoria
+            if (data.system?.metrics?.memory) {
+                const mem = data.system.metrics.memory;
+                document.getElementById('memSystemUsed').textContent = mem.system.usedMB.toFixed(0);
+                document.getElementById('memSystemTotal').textContent = mem.system.totalMB.toFixed(0);
+                document.getElementById('memHeapUsed').textContent = mem.process.heapUsed.toFixed(0);
+                document.getElementById('memHeapTotal').textContent = mem.process.heapTotal.toFixed(0);
+
+                updateProgressBar('memSystemBar', mem.system.usagePercent);
+                updateProgressBar('memHeapBar', mem.process.heapUsagePercent);
+            }
+
+            // Base de datos
+            if (data.database?.metrics) {
+                const db = data.database.metrics;
+                document.getElementById('dbStatus').textContent = 
+                    db.connection?.isConnected ? 'Conectado' : 'Desconectado';
+                document.getElementById('dbConnections').textContent = 
+                    db.stats?.connections?.active || '-';
+                document.getElementById('dbCollections').textContent = 
+                    db.collections?.totalCollections || '-';
+            }
+
+            // Resumen
+            if (data.summary) {
+                document.getElementById('totalIssues').textContent = data.summary.totalIssues || 0;
+                document.getElementById('criticalIssues').textContent = data.summary.criticalIssues || 0;
+                document.getElementById('warningIssues').textContent = data.summary.warnings || 0;
+            }
+
+            // Issues
+            if (data.issues && data.issues.length > 0) {
+                const issuesCard = document.getElementById('issuesCard');
+                const issuesList = document.getElementById('issuesList');
+                issuesCard.style.display = 'block';
+                issuesList.innerHTML = '';
+
+                data.issues.forEach(issue => {
+                    const li = document.createElement('li');
+                    li.className = `issue issue-${issue.severity}`;
+                    li.innerHTML = `
+                        <div class="issue-title">${issue.type.toUpperCase()} - ${issue.severity.toUpperCase()}</div>
+                        <div class="issue-message">${issue.message}</div>
+                    `;
+                    issuesList.appendChild(li);
+                });
+            } else {
+                document.getElementById('issuesCard').style.display = 'none';
+            }
+
+            // Cargar incidentes
+            loadIncidents();
+        }
+
+        function updateProgressBar(id, value) {
+            const bar = document.getElementById(id);
+            bar.style.width = `${Math.min(value, 100)}%`;
+            
+            // Cambiar color según valor
+            bar.className = 'progress-fill';
+            if (value < 50) {
+                bar.classList.add('progress-low');
+            } else if (value < 80) {
+                bar.classList.add('progress-medium');
+            } else {
+                bar.classList.add('progress-high');
+            }
+        }
+
+        async function loadIncidents() {
+            try {
+                const response = await fetch('/health/incidents?limit=10');
+                const data = await response.json();
+
+                const container = document.getElementById('incidentsContainer');
+                if (data.incidents && data.incidents.length > 0) {
+                    let html = '<table><thead><tr><th>Fecha</th><th>Estado</th><th>Problemas</th><th>Resuelto</th></tr></thead><tbody>';
+                    data.incidents.forEach(incident => {
+                        html += `
+                            <tr>
+                                <td>${new Date(incident.timestamp).toLocaleString()}</td>
+                                <td><span class="status-badge status-${incident.status}">${incident.status}</span></td>
+                                <td>${incident.issues.length}</td>
+                                <td>${incident.resolved ? 'Sí' : 'No'}</td>
+                            </tr>
+                        `;
+                    });
+                    html += '</tbody></table>';
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<p>No hay incidentes recientes</p>';
+                }
+            } catch (error) {
+                document.getElementById('incidentsContainer').innerHTML = 
+                    `<div class="error">Error cargando incidentes: ${error.message}</div>`;
+            }
+        }
+
+        // Auto-refresh
+        document.getElementById('autoRefresh').addEventListener('change', function(e) {
+            if (e.target.checked) {
+                autoRefreshInterval = setInterval(loadHealthData, 30000);
+            } else {
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+        });
+
+        // Cargar datos iniciales
+        loadHealthData();
+        if (document.getElementById('autoRefresh').checked) {
+            autoRefreshInterval = setInterval(loadHealthData, 30000);
+        }
+    </script>
+</body>
+</html>
+

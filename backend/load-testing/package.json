@@ -1,0 +1,22 @@
+{
+  "name": "moviles2-load-testing",
+  "version": "1.0.0",
+  "description": "Pruebas de carga y análisis de performance",
+  "scripts": {
+    "test:load": "k6 run scenarios/peak-hours.js",
+    "test:concurrent": "k6 run scenarios/concurrent-users.js",
+    "test:stress": "k6 run scenarios/stress-test.js",
+    "test:soak": "k6 run --duration 24h scenarios/soak-test.js",
+    "analyze": "node scripts/analyze-results.js",
+    "test:all": "npm run test:load && npm run test:concurrent && npm run test:stress"
+  },
+  "keywords": [
+    "load-testing",
+    "performance",
+    "k6",
+    "stress-testing"
+  ],
+  "author": "",
+  "license": "ISC"
+}
+
