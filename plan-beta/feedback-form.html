@@ -1,0 +1,18 @@
+<!-- Formulario de feedback para beta testers (puede integrarse en la app o web) -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Feedback Beta Testing</title>
+</head>
+<body>
+  <h2>Feedback Beta Testing</h2>
+  <form action="https://formspree.io/f/tu-form-id" method="POST">
+    <label>Usuario/Test ID:<br><input type="text" name="user" required></label><br><br>
+    <label>¿Qué te gustó?<br><textarea name="like" required></textarea></label><br><br>
+    <label>¿Qué mejorarías?<br><textarea name="improve" required></textarea></label><br><br>
+    <label>¿Encontraste errores? (describe)<br><textarea name="bugs"></textarea></label><br><br>
+    <button type="submit">Enviar feedback</button>
+  </form>
+</body>
+</html>
